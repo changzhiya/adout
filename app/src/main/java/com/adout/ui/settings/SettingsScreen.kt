@@ -195,6 +195,92 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 )
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Ad Skip section
+            Text(
+                text = "广告跳过",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextTertiary,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            StatusCard {
+                var adSkipEnabled by remember {
+                    mutableStateOf(prefs.getBoolean("ad_skip_enabled", true))
+                }
+                val isAccessibilityRunning = remember {
+                    mutableStateOf(isAccessibilityServiceEnabled(context))
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(WhiteAlpha20),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.FlashOn,
+                            contentDescription = null,
+                            tint = White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "自动跳过开屏广告",
+                            fontSize = 15.sp,
+                            color = White,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            if (isAccessibilityRunning.value) "无障碍服务已开启" else "需要开启无障碍服务",
+                            fontSize = 13.sp,
+                            color = if (isAccessibilityRunning.value) GreenGradientEnd else Color(0xFFFF6B6B)
+                        )
+                    }
+
+                    Switch(
+                        checked = adSkipEnabled,
+                        onCheckedChange = { enabled ->
+                            adSkipEnabled = enabled
+                            prefs.edit().putBoolean("ad_skip_enabled", enabled).apply()
+                            if (enabled && !isAccessibilityRunning.value) {
+                                openAccessibilitySettings(context)
+                            }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = White,
+                            checkedTrackColor = GreenGradientEnd
+                        )
+                    )
+                }
+
+                if (!isAccessibilityRunning.value) {
+                    TextButton(
+                        onClick = { openAccessibilitySettings(context) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "去开启无障碍服务",
+                            color = White,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -291,6 +377,21 @@ private fun ActionItem(icon: ImageVector, title: String, onClick: () -> Unit) {
             tint = TextTertiary
         )
     }
+}
+
+private fun isAccessibilityServiceEnabled(context: android.content.Context): Boolean {
+    val serviceName = "com.adout/.accessibility.AdSkipAccessibilityService"
+    val enabledServices = android.provider.Settings.Secure.getString(
+        context.contentResolver,
+        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ) ?: return false
+    return enabledServices.contains(serviceName)
+}
+
+private fun openAccessibilitySettings(context: android.content.Context) {
+    try {
+        context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    } catch (_: Exception) {}
 }
 
 private fun formatTime(timestamp: Long): String {
