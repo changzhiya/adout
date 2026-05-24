@@ -3,13 +3,45 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Shield shape -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0" />
+        android:pathData="M54,22 L54,22 C54,22 72,28 78,32 L78,52 C78,68 68,78 54,84 C40,78 30,68 30,52 L30,32 C36,28 54,22 54,22 Z" />
+
+    <!-- Inner shield highlight -->
     <path
-        android:fillColor="#667eea"
-        android:pathData="M54,54m-30,0a30,30 0,1 1,60 0a30,30 0,1 1,-60 0" />
+        android:fillColor="#E0E0E0"
+        android:pathData="M54,26 L54,26 C54,26 70,31 75,34 L75,52 C75,66 66,75 54,80 C42,75 33,66 33,52 L33,34 C38,31 54,26 54,26 Z" />
+
+    <!-- Power symbol circle -->
+    <path
+        android:fillColor="#4A00E0"
+        android:pathData="M54,42 C60,42 65,47 65,53 C65,59 60,64 54,64 C48,64 43,59 43,53 C43,47 48,42 54,42 Z"
+        android:strokeColor="#4A00E0"
+        android:strokeWidth="2" />
+
+    <!-- Power symbol line -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M44,42L44,66L48,66L48,58L60,58L60,66L64,66L64,42L60,42L60,54L48,54L48,42Z" />
+        android:pathData="M54,46 L54,56"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round" />
+
+    <!-- Power symbol gap (white arc) -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M48,48 C46,50 44,52 44,54"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round" />
+
+    <!-- X mark for ad blocking -->
+    <path
+        android:fillColor="#FF4444"
+        android:pathData="M68,38 L74,44 M74,38 L68,44"
+        android:strokeColor="#FF4444"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round" />
 </vector>
