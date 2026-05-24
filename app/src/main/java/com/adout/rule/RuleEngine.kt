@@ -44,12 +44,40 @@ class RuleEngine {
         val normalizedDomain = domain.lowercase().trim()
 
         // Whitelist takes priority
-        if (whitelistMatcher.match(normalizedDomain) != null) {
+        if (matchesDomainBoundary(whitelistMatcher, normalizedDomain)) {
             return false
         }
 
         // Check blacklist
-        return blacklistMatcher.match(normalizedDomain) != null
+        return matchesDomainBoundary(blacklistMatcher, normalizedDomain)
+    }
+
+    /**
+     * Check if any pattern in the matcher matches at a domain boundary.
+     * This prevents false positives like "du.com" matching "baidu.com".
+     *
+     * A match at the end of search position `i` in domain `d` is valid if:
+     * - The match starts at position 0 (exact domain match), OR
+     * - The character before the match start is a '.' (subdomain boundary)
+     */
+    private fun matchesDomainBoundary(matcher: AhoCorasickMatcher, domain: String): Boolean {
+        val results = matcher.search(domain)
+        for (result in results) {
+            val matchEnd = result.position
+            val matchStart = matchEnd - result.pattern.length + 1
+
+            if (matchStart == 0) {
+                // Pattern matches from the start of domain
+                // Check that the rest of the domain (if any) starts with '.'
+                if (domain.length == result.pattern.length || domain[result.pattern.length] == '.') {
+                    return true
+                }
+            } else if (domain[matchStart - 1] == '.') {
+                // Pattern starts after a dot - valid subdomain boundary
+                return true
+            }
+        }
+        return false
     }
 
     fun clearRules() {
@@ -102,18 +130,26 @@ class RuleEngine {
         val normalizedDomain = domain.lowercase().trim()
 
         // Check whitelist first
-        val whitelistMatch = whitelistMatcher.match(normalizedDomain)
-        if (whitelistMatch != null) {
-            return "WHITELIST: $whitelistMatch"
+        val whitelistResults = whitelistMatcher.search(normalizedDomain)
+        for (result in whitelistResults) {
+            val matchEnd = result.position
+            val matchStart = matchEnd - result.pattern.length + 1
+            if (matchStart == 0 || normalizedDomain[matchStart - 1] == '.') {
+                return "WHITELIST: ${result.pattern}"
+            }
         }
 
         // Then check blacklist
-        val blacklistMatch = blacklistMatcher.match(normalizedDomain)
-        return if (blacklistMatch != null) {
-            "BLACKLIST: $blacklistMatch"
-        } else {
-            null
+        val blacklistResults = blacklistMatcher.search(normalizedDomain)
+        for (result in blacklistResults) {
+            val matchEnd = result.position
+            val matchStart = matchEnd - result.pattern.length + 1
+            if (matchStart == 0 || normalizedDomain[matchStart - 1] == '.') {
+                return "BLACKLIST: ${result.pattern}"
+            }
         }
+
+        return null
     }
 
     fun reloadRules(newRules: List<String>) {
