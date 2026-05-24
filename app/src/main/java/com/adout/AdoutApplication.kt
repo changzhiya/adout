@@ -4,6 +4,11 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.adout.worker.VpnWatchdogWorker
+import java.util.concurrent.TimeUnit
 
 class AdoutApplication : Application() {
 
@@ -15,6 +20,7 @@ class AdoutApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        scheduleWatchdog()
     }
 
     private fun createNotificationChannel() {
@@ -31,5 +37,17 @@ class AdoutApplication : Application() {
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
         }
+    }
+
+    private fun scheduleWatchdog() {
+        val request = PeriodicWorkRequestBuilder<VpnWatchdogWorker>(
+            15, TimeUnit.MINUTES
+        ).build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            VpnWatchdogWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
     }
 }
