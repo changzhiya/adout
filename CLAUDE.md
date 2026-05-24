@@ -152,9 +152,27 @@ app/src/main/assets/rules/
 
 ## Known Issues
 
-- `LocalBroadcastManager` 已废弃但仍可用，后续需迁移到其他方案
+- `LocalBroadcastManager` 已废弃但仍可用，后续需迁移到 StateFlow 或其他方案
 - DNS-only 模式无法拦截 DoH/IP 直连广告，需无障碍服务补充
 - 部分广告 SDK 更新后可能需要更新 AdSkipRules 模式
+
+## Recent Improvements
+
+### 无障碍服务增强 (2026-05-24)
+
+1. **广告检测逻辑优化**：
+   - 增加 packageName 检查（`isAdSdkPackage`）
+   - 扩展 className 模式匹配（openscreen、fullscreenad、interstitial、rewardvideo）
+   - 使用 `isSkipText` 和 `isSkipResourceId` 辅助函数验证
+
+2. **跳过次数统计**：
+   - 添加 `adsSkippedCount` StateFlow 在 `AdSkipAccessibilityService`
+   - 持久化到 SharedPreferences (`ads_skipped_count`)
+   - 主界面显示三个统计：DNS拦截、广告跳过、过滤规则
+
+3. **主界面 UI 改进**：
+   - 底部统计卡片从 2 列改为 3 列
+   - 新增"广告跳过"统计项，展示无障碍服务工作效果
 
 ## Key Design Decisions
 

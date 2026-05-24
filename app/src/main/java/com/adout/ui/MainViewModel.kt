@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.adout.accessibility.AdSkipAccessibilityService
 import com.adout.vpn.AdBlockVpnService
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val filter = IntentFilter("VPN_STATUS_CHANGED")
         LocalBroadcastManager.getInstance(application).registerReceiver(vpnStatusReceiver, filter)
         updateVpnStatus()
+
+        // Observe accessibility service skip count
+        viewModelScope.launch {
+            AdSkipAccessibilityService.adsSkippedCount.collect { count ->
+                _uiState.value = _uiState.value.copy(adsSkippedCount = count)
+            }
+        }
     }
 
     fun toggleVpn() {
@@ -169,5 +177,6 @@ data class MainUiState(
     val isVpnRunning: Boolean = false,
     val ruleCount: Int = 0,
     val blockedCount: Long = 0,
+    val adsSkippedCount: Long = 0,
     val showPermissionDeniedMessage: Boolean = false
 )

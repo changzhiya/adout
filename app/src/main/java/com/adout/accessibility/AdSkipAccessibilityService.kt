@@ -13,11 +13,16 @@ class AdSkipAccessibilityService : AccessibilityService() {
         private const val TAG = "AdSkipService"
         private const val PREFS_NAME = "adout_prefs"
         private const val KEY_AD_SKIP_ENABLED = "ad_skip_enabled"
+        private const val KEY_ADS_SKIPPED_COUNT = "ads_skipped_count"
 
         var instance: AdSkipAccessibilityService? = null
             private set
 
         fun isRunning(): Boolean = instance != null
+
+        // Observable skip count for UI
+        private val _adsSkippedCount = kotlinx.coroutines.flow.MutableStateFlow(0L)
+        val adsSkippedCount: kotlinx.coroutines.flow.StateFlow<Long> = _adsSkippedCount
     }
 
     private var lastPackageName: String? = null
@@ -28,7 +33,10 @@ class AdSkipAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        Log.i(TAG, "AdSkipAccessibilityService connected")
+        // Load persisted skip count
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        _adsSkippedCount.value = prefs.getLong(KEY_ADS_SKIPPED_COUNT, 0)
+        Log.i(TAG, "AdSkipAccessibilityService connected, skipCount=${_adsSkippedCount.value}")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -80,10 +88,22 @@ class AdSkipAccessibilityService : AccessibilityService() {
     }
 
     private fun isLikelyAdActivity(packageName: String, className: String): Boolean {
+        // Strategy 1: Check if class name matches ad SDK patterns (most reliable)
         if (AdSkipRules.isAdClassName(className)) return true
+
+        // Strategy 2: Check if package belongs to known ad SDK
+        if (AdSkipRules.isAdSdkPackage(packageName)) {
+            Log.d(TAG, "Ad SDK package detected: $packageName")
+            return true
+        }
+
+        // Strategy 3: Check for common ad Activity naming patterns
         val lower = className.lowercase()
         if (lower.contains("splash") && lower.contains("ad")) return true
         if (lower.contains("adsplash") || lower.contains("splashad")) return true
+        if (lower.contains("openscreen") || lower.contains("fullscreenad")) return true
+        if (lower.contains("interstitial") || lower.contains("rewardvideo")) return true
+
         return false
     }
 
@@ -99,36 +119,44 @@ class AdSkipAccessibilityService : AccessibilityService() {
     }
 
     private fun tryClickSkipButton(root: AccessibilityNodeInfo): Boolean {
-        // Strategy 1: Find by text
+        // Strategy 1: Find by text using isSkipText helper
         for (text in AdSkipRules.SKIP_TEXT_PATTERNS) {
             val nodes = root.findAccessibilityNodeInfosByText(text)
             for (node in nodes) {
+                // Validate the text actually matches skip patterns
+                val nodeText = node.text?.toString() ?: ""
+                if (!AdSkipRules.isSkipText(nodeText)) continue
+
                 if (node.isClickable && node.isEnabled) {
                     node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "Clicked skip by text: '$text'")
+                    Log.d(TAG, "Clicked skip by text: '$nodeText'")
                     return true
                 }
                 val parent = node.parent
                 if (parent != null && parent.isClickable && parent.isEnabled) {
                     parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d(TAG, "Clicked skip parent by text: '$text'")
+                    Log.d(TAG, "Clicked skip parent by text: '$nodeText'")
                     return true
                 }
             }
         }
 
-        // Strategy 2: Find by resource ID
+        // Strategy 2: Find by resource ID using isSkipResourceId helper
         val skipNodes = findNodesByResourceId(root, AdSkipRules.SKIP_RESOURCE_ID_PATTERNS)
         for (node in skipNodes) {
+            // Validate the resource ID actually matches skip patterns
+            val resourceId = node.viewIdResourceName ?: ""
+            if (!AdSkipRules.isSkipResourceId(resourceId)) continue
+
             if (node.isClickable && node.isEnabled) {
                 node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                Log.d(TAG, "Clicked skip by resource ID")
+                Log.d(TAG, "Clicked skip by resource ID: $resourceId")
                 return true
             }
             val parent = node.parent
             if (parent != null && parent.isClickable && parent.isEnabled) {
                 parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                Log.d(TAG, "Clicked skip parent by resource ID")
+                Log.d(TAG, "Clicked skip parent by resource ID: $resourceId")
                 return true
             }
         }
@@ -233,10 +261,15 @@ class AdSkipAccessibilityService : AccessibilityService() {
     }
 
     private fun sendSkipBroadcast(packageName: String) {
-        val intent = Intent("AD_SKIPPED").apply {
-            putExtra("package_name", packageName)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        // Increment skip count
+        val newCount = _adsSkippedCount.value + 1
+        _adsSkippedCount.value = newCount
+
+        // Persist count
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        prefs.edit().putLong(KEY_ADS_SKIPPED_COUNT, newCount).apply()
+
+        Log.i(TAG, "Ad skipped for $packageName, total: $newCount")
     }
 
     override fun onInterrupt() {
