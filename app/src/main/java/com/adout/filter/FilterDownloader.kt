@@ -209,4 +209,88 @@ class FilterDownloader(private val context: Context? = null) {
         }
         return stats
     }
+
+    /**
+     * Load rules from app assets (offline mode)
+     * @return Map of filter name to rule list
+     */
+    suspend fun loadFromAssets(): Map<String, List<String>> = withContext(Dispatchers.IO) {
+        if (context == null) return@withContext emptyMap()
+
+        val filters = mutableMapOf<String, List<String>>()
+
+        try {
+            val assetsDir = "rules"
+            val assetFiles = context.assets.list(assetsDir) ?: emptyArray()
+
+            for (fileName in assetFiles) {
+                if (fileName.endsWith(".txt")) {
+                    val filterName = fileName.removeSuffix(".txt")
+                    val content = context.assets.open("$assetsDir/$fileName").bufferedReader().readText()
+                    val rules = parseFilterContent(content)
+                    filters[filterName] = rules
+                    Log.i(TAG, "Loaded $filterName from assets: ${rules.size} rules")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load from assets", e)
+        }
+
+        filters
+    }
+
+    /**
+     * Get embedded rules (for offline use)
+     * These are the most common ad domains that should be blocked
+     */
+    fun getEmbeddedRules(): List<String> {
+        return listOf(
+            // Xiaomi Ads
+            "||ad.xiaomi.com^",
+            "||api.ad.xiaomi.com^",
+            "||sdkconfig.ad.xiaomi.com^",
+            "||ad.mi.com^",
+
+            // Tencent Ads
+            "||e.qq.com^",
+            "||mi.gdt.qq.com^",
+            "||pgdt.gtimg.cn^",
+            "||gdt.qq.com^",
+
+            // Alibaba Ads
+            "||ad.alicdn.com^",
+            "||mmstat.com^",
+            "||atanx.alicdn.com^",
+
+            // Baidu Ads
+            "||pos.baidu.com^",
+            "||cpro.baidu.com^",
+            "||hm.baidu.com^",
+
+            // ByteDance Ads
+            "||pangolin-sdk-toutiao.com^",
+            "||ad.toutiao.com^",
+            "||ad.snssdk.com^",
+
+            // Google Ads
+            "||googleadservices.com^",
+            "||googlesyndication.com^",
+            "||adservice.google.com^",
+            "||pagead2.googlesyndication.com^",
+
+            // Analytics/Tracking
+            "||analytics.google.com^",
+            "||www.google-analytics.com^",
+            "||ssl.google-analytics.com^",
+
+            // Huawei Ads
+            "||ad.hicloud.com^",
+            "||api.ad.hicloud.com^",
+
+            // OPPO/vivo Ads
+            "||adx.ads.oppomobile.com^",
+            "||ad.oppomobile.com^",
+            "||adx.ads.vivo.com.cn^"
+        )
+    }
 }

@@ -74,7 +74,29 @@ class RuleRepository(private val context: Context? = null) {
     }
 
     /**
-     * Download and get AdGuardFilters rules
+     * Load embedded rules from app assets (offline-first approach)
+     */
+    suspend fun getEmbeddedRules(): List<String> = withContext(Dispatchers.IO) {
+        try {
+            val filters = filterDownloader.loadFromAssets()
+            val merged = filterDownloader.mergeFilters(filters)
+
+            if (merged.isNotEmpty()) {
+                Log.i(TAG, "Loaded embedded rules from assets: ${merged.size} rules")
+                return@withContext merged
+            }
+
+            // Fallback to hardcoded embedded rules
+            Log.w(TAG, "No asset rules found, using hardcoded embedded rules")
+            filterDownloader.getEmbeddedRules()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load embedded rules", e)
+            filterDownloader.getEmbeddedRules()
+        }
+    }
+
+    /**
+     * Download and get AdGuardFilters rules (online update)
      */
     suspend fun getAdGuardFilters(): List<String> = withContext(Dispatchers.IO) {
         try {
@@ -126,19 +148,27 @@ class RuleRepository(private val context: Context? = null) {
     ): List<String> = withContext(Dispatchers.IO) {
         val allRules = mutableSetOf<String>()
 
-        // Add built-in rules
+        // Add built-in rules (always included as baseline)
         allRules.addAll(builtInRules)
 
-        // Add AdGuardFilters rules
+        // Add embedded rules from assets (offline-first)
+        val embeddedRules = getEmbeddedRules()
+        allRules.addAll(embeddedRules)
+
+        // Add AdGuardFilters rules (online update, optional)
         if (includeAdGuard) {
-            val adGuardRules = getAdGuardFilters()
-            allRules.addAll(adGuardRules)
+            try {
+                val adGuardRules = getAdGuardFilters()
+                allRules.addAll(adGuardRules)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to get AdGuardFilters, using embedded rules only", e)
+            }
         }
 
         // Add custom rules
         allRules.addAll(customRules)
 
-        Log.i(TAG, "Total rules: ${allRules.size}")
+        Log.i(TAG, "Total rules: ${allRules.size} (builtIn=${builtInRules.size}, embedded=${embeddedRules.size})")
         allRules.toList()
     }
 
@@ -171,6 +201,14 @@ class RuleRepository(private val context: Context? = null) {
         summary["whitelist"] = categorized.whitelist.size
         summary["builtIn"] = builtInRules.size
         return summary
+    }
+
+    /**
+     * Check if we have any rules available (for UI status)
+     */
+    suspend fun hasRules(): Boolean {
+        val embedded = getEmbeddedRules()
+        return embedded.isNotEmpty() || builtInRules.isNotEmpty()
     }
 
     /**
