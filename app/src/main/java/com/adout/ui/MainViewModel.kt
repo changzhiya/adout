@@ -107,6 +107,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun refreshRules() {
+        val context = getApplication<Application>()
+        val intent = Intent("REFRESH_RULES")
+        context.sendBroadcast(intent)
+    }
+
     private fun updateVpnStatus() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(

@@ -2,18 +2,25 @@ package com.adout.vpn
 
 import android.app.Notification
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import com.adout.AdoutApplication
 import com.adout.rule.RuleEngine
 import com.adout.data.RuleRepository
+import com.adout.service.NotificationHelper
 import com.adout.ui.MainActivity
 import kotlinx.coroutines.*
 
 class AdBlockVpnService : VpnService() {
 
     companion object {
+        private const val TAG = "AdBlockVpnService"
+
         var isRunning = false
             private set
 
@@ -28,15 +35,28 @@ class AdBlockVpnService : VpnService() {
     private var tunnelManager: TunnelManager? = null
     private var dnsProxy: DnsProxyWrapper? = null
 
+    private val ruleUpdateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "REFRESH_RULES") {
+                refreshRules()
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
+
+        // Register rule update receiver
+        val filter = IntentFilter("REFRESH_RULES")
+        registerReceiver(ruleUpdateReceiver, filter)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             "START" -> startVpn()
             "STOP" -> stopVpn()
+            "REFRESH_RULES" -> refreshRules()
         }
         return START_STICKY
     }
@@ -131,17 +151,27 @@ class AdBlockVpnService : VpnService() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
+        val ruleCount = ruleEngine.getRuleCount()
+        val blockedCount = tunnelManager?.getBlockedCount() ?: 0
+
         return Notification.Builder(this, AdoutApplication.NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Adout 保护中")
-            .setContentText("广告拦截已启用")
+            .setContentText("已加载 $ruleCount 条规则，拦截 $blockedCount 个广告")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
     }
 
+    private fun updateNotification() {
+        val notification = createNotification()
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        notificationManager.notify(1, notification)
+    }
+
     override fun onDestroy() {
         stopVpn()
+        unregisterReceiver(ruleUpdateReceiver)
         serviceScope.cancel()
         instance = null
         super.onDestroy()
@@ -166,6 +196,28 @@ class AdBlockVpnService : VpnService() {
     fun updateRules(newRules: List<String>) {
         serviceScope.launch {
             ruleEngine.reloadRules(newRules)
+            Log.i(TAG, "Rules updated: ${newRules.size} rules")
+            updateNotification()
+        }
+    }
+
+    /**
+     * Refresh rules from all sources
+     */
+    fun refreshRules() {
+        serviceScope.launch {
+            try {
+                val allRules = ruleRepository.getAllRules()
+                ruleEngine.reloadRules(allRules)
+                Log.i(TAG, "Rules refreshed: ${allRules.size} rules")
+                updateNotification()
+
+                withContext(Dispatchers.Main) {
+                    sendBroadcast(Intent("VPN_STATUS_CHANGED"))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to refresh rules", e)
+            }
         }
     }
 
@@ -175,6 +227,8 @@ class AdBlockVpnService : VpnService() {
     fun addCustomRule(ruleText: String) {
         serviceScope.launch {
             ruleEngine.addRule(ruleText)
+            Log.i(TAG, "Custom rule added: $ruleText")
+            updateNotification()
         }
     }
 }
