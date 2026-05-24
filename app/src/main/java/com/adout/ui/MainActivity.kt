@@ -14,6 +14,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -76,22 +78,22 @@ fun MainScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Animated gradient colors
+    // Animated gradient colors - optimized duration for responsive feel
     val backgroundColor by animateColorAsState(
         targetValue = if (uiState.isVpnRunning) GreenGradientStart else PurpleGradientStart,
-        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
         label = "backgroundColor"
     )
 
     val backgroundMiddle by animateColorAsState(
         targetValue = if (uiState.isVpnRunning) GreenGradientMiddle else PurpleGradientMiddle,
-        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
         label = "backgroundMiddle"
     )
 
     val backgroundGradientEnd by animateColorAsState(
         targetValue = if (uiState.isVpnRunning) GreenGradientEnd else PurpleGradientEnd,
-        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
         label = "backgroundGradientEnd"
     )
 
@@ -117,6 +119,9 @@ fun MainScreen(
         label = "glowAlpha"
     )
 
+    // Get system bar insets for safe area handling
+    val systemBarsPadding = WindowInsets.systemBars.asPaddingValues()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -132,7 +137,12 @@ fun MainScreen(
             verticalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 32.dp, vertical = 48.dp)
+                .padding(
+                    start = 32.dp,
+                    end = 32.dp,
+                    top = systemBarsPadding.calculateTopPadding(),
+                    bottom = systemBarsPadding.calculateBottomPadding()
+                )
         ) {
             // Top section - App Title
             Column(
