@@ -74,11 +74,12 @@ class AdBlockVpnService : VpnService() {
                 startDnsProxy()
 
                 // Establish VPN connection
-                vpnInterface = establishVpn()
+                val vpn = establishVpn()
+                vpnInterface = vpn
 
-                if (vpnInterface != null) {
+                if (vpn != null) {
                     // Start traffic processing
-                    tunnelManager = TunnelManager(vpnInterface!!, ruleEngine, dnsProxy)
+                    tunnelManager = TunnelManager(vpn, ruleEngine, dnsProxy)
                     tunnelManager?.start()
 
                     isRunning = true
@@ -92,7 +93,7 @@ class AdBlockVpnService : VpnService() {
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Failed to start VPN", e)
                 stopVpn()
             }
         }

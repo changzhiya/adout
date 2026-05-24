@@ -1,6 +1,7 @@
 package com.adout.vpn
 
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import com.adout.rule.RuleEngine
 import kotlinx.coroutines.*
 import java.io.FileInputStream
@@ -18,6 +19,9 @@ class TunnelManager(
     private val ruleEngine: RuleEngine,
     private val dnsProxy: DnsProxyWrapper? = null
 ) {
+    companion object {
+        private const val TAG = "TunnelManager"
+    }
 
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -58,8 +62,9 @@ class TunnelManager(
 
     private fun processPacket(buffer: ByteBuffer, outputStream: FileOutputStream) {
         try {
+            val length = buffer.limit()
             // Check if it's an IP packet
-            if (buffer.remaining() < 20) return
+            if (length < 20) return
 
             val version = (buffer.get(0).toInt() and 0xF0) shr 4
             if (version != 4) return // Only handle IPv4
@@ -72,36 +77,34 @@ class TunnelManager(
                 processUdpPacket(buffer, outputStream)
             } else {
                 // Other protocols forward directly
-                buffer.rewind()
-                outputStream.write(buffer.array(), 0, buffer.remaining())
+                outputStream.write(buffer.array(), 0, length)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error processing packet", e)
         }
     }
 
     private fun processUdpPacket(buffer: ByteBuffer, outputStream: FileOutputStream) {
         try {
+            val length = buffer.limit()
             // IP header length
             val ipHeaderLength = (buffer.get(0).toInt() and 0x0F) * 4
 
-            // UDP header
-            val udpHeaderStart = ipHeaderLength
-            if (buffer.remaining() < udpHeaderStart + 8) return
+            // Check if we have enough data for UDP header
+            if (length < ipHeaderLength + 8) return
 
-            val destPort = ((buffer.get(udpHeaderStart + 2).toInt() and 0xFF) shl 8) or
-                    (buffer.get(udpHeaderStart + 3).toInt() and 0xFF)
+            val destPort = ((buffer.get(ipHeaderLength + 2).toInt() and 0xFF) shl 8) or
+                    (buffer.get(ipHeaderLength + 3).toInt() and 0xFF)
 
             // Check if it's DNS request (port 53)
             if (destPort == 53) {
                 processDnsPacket(buffer, ipHeaderLength, outputStream)
             } else {
                 // Other UDP traffic forward directly
-                buffer.rewind()
-                outputStream.write(buffer.array(), 0, buffer.remaining())
+                outputStream.write(buffer.array(), 0, length)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error processing UDP packet", e)
         }
     }
 
