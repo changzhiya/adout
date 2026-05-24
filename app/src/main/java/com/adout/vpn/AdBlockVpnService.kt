@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.adout.AdoutApplication
@@ -111,7 +112,12 @@ class AdBlockVpnService : VpnService() {
             isRunning = false
 
             withContext(Dispatchers.Main) {
-                stopForeground(true)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
                 stopSelf()
                 sendBroadcast(Intent("VPN_STATUS_CHANGED"))
             }
