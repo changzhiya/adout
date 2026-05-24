@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.shape.CircleShape
@@ -28,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -35,6 +37,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.adout.ui.theme.*
+import com.adout.ui.util.AnimationHelper
+import com.adout.ui.util.HapticHelper
+import com.adout.ui.util.ScreenHelper
 import com.adout.vpn.AdBlockVpnService
 
 class MainActivity : ComponentActivity() {
@@ -77,31 +82,41 @@ fun MainScreen(
     viewModel: MainViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Screen density and animation settings for high-res display adaptation
+    val isHighDensity = remember { ScreenHelper.isHighDensityScreen(context) }
+    val densityScaleFactor = remember { ScreenHelper.getHighDensityScaleFactor(context) }
+    val isReducedMotion = remember { AnimationHelper.isReducedMotionEnabled(context) }
 
     // Animated gradient colors - optimized duration for responsive feel
+    // Respects reduced-motion setting
+    val animationDuration = if (isReducedMotion) 0 else 350
+
     val backgroundColor by animateColorAsState(
         targetValue = if (uiState.isVpnRunning) GreenGradientStart else PurpleGradientStart,
-        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = animationDuration, easing = FastOutSlowInEasing),
         label = "backgroundColor"
     )
 
     val backgroundMiddle by animateColorAsState(
         targetValue = if (uiState.isVpnRunning) GreenGradientMiddle else PurpleGradientMiddle,
-        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = animationDuration, easing = FastOutSlowInEasing),
         label = "backgroundMiddle"
     )
 
     val backgroundGradientEnd by animateColorAsState(
         targetValue = if (uiState.isVpnRunning) GreenGradientEnd else PurpleGradientEnd,
-        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = animationDuration, easing = FastOutSlowInEasing),
         label = "backgroundGradientEnd"
     )
 
     // Pulse animation for active state
+    // Disabled when reduced-motion is enabled
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (uiState.isVpnRunning) 1.05f else 1f,
+        targetValue = if (uiState.isVpnRunning && !isReducedMotion) 1.05f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(1000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -111,7 +126,7 @@ fun MainScreen(
 
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
-        targetValue = if (uiState.isVpnRunning) 0.6f else 0.3f,
+        targetValue = if (uiState.isVpnRunning && !isReducedMotion) 0.6f else 0.3f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
@@ -208,7 +223,10 @@ fun MainScreen(
                             color = WhiteAlpha40,
                             shape = CircleShape
                         )
-                        .clickable { viewModel.toggleVpn() },
+                        .clickable {
+                            HapticHelper.performHeavyFeedback(context)
+                            viewModel.toggleVpn()
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
@@ -312,14 +330,15 @@ fun MainScreen(
                         ) {
                             Text(
                                 text = formatCount(uiState.blockedCount),
-                                fontSize = 32.sp,
+                                fontSize = (32 * densityScaleFactor).sp,
                                 fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,  // Tabular figures prevent layout shift
                                 color = White
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "今日拦截",
-                                fontSize = 13.sp,
+                                fontSize = (13 * densityScaleFactor).sp,
                                 color = TextSecondary
                             )
                         }
@@ -338,14 +357,15 @@ fun MainScreen(
                         ) {
                             Text(
                                 text = formatCount(uiState.ruleCount.toLong()),
-                                fontSize = 32.sp,
+                                fontSize = (32 * densityScaleFactor).sp,
                                 fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,  // Tabular figures prevent layout shift
                                 color = White
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "过滤规则",
-                                fontSize = 13.sp,
+                                fontSize = (13 * densityScaleFactor).sp,
                                 color = TextSecondary
                             )
                         }
