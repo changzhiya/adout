@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">AdOut</string>
+    <string name="accessibility_service_description">AdOut 使用无障碍服务检测并跳过开屏广告。此服务仅在检测到广告页面时触发，不会收集任何个人信息。</string>
 </resources>
