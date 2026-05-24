@@ -81,7 +81,7 @@ class FilterDownloader(private val context: Context? = null) {
      */
     suspend fun downloadFromUrl(url: String): String? = withContext(Dispatchers.IO) {
         try {
-            val connection = URL(url).openConnection() as HttpURLConnection
+            val connection = URL(url).openConnection() as? HttpURLConnection ?: return@withContext null
             connection.requestMethod = "GET"
             connection.connectTimeout = 10000
             connection.readTimeout = 10000
@@ -251,11 +251,15 @@ class FilterDownloader(private val context: Context? = null) {
             "||sdkconfig.ad.xiaomi.com^",
             "||ad.mi.com^",
 
-            // Tencent Ads
+            // Tencent Ads (GDT)
             "||e.qq.com^",
             "||mi.gdt.qq.com^",
             "||pgdt.gtimg.cn^",
             "||gdt.qq.com^",
+            "||sdk.e.qq.com^",
+            "||ad.qq.com^",
+            "||adcdn.qq.com^",
+            "||beacon.qq.com^",
 
             // Alibaba Ads
             "||ad.alicdn.com^",
@@ -266,11 +270,26 @@ class FilterDownloader(private val context: Context? = null) {
             "||pos.baidu.com^",
             "||cpro.baidu.com^",
             "||hm.baidu.com^",
+            "||mobads.baidu.com^",
+            "||eclick.baidu.com^",
 
-            // ByteDance Ads
+            // ByteDance/穿山甲 Ads
             "||pangolin-sdk-toutiao.com^",
             "||ad.toutiao.com^",
             "||ad.snssdk.com^",
+            "||pangolin.snssdk.com^",
+            "||is.snssdk.com^",
+            "||pglstatp.com^",
+            "||ad.douyin.com^",
+
+            // 快手 Ads
+            "||ad.e.kuaishou.com^",
+            "||sdk.e.kuaishou.com^",
+            "||ad.gifshow.com^",
+
+            // 京东 Ads
+            "||adx.jd.com^",
+            "||ads.jd.com^",
 
             // Google Ads
             "||googleadservices.com^",
@@ -282,6 +301,8 @@ class FilterDownloader(private val context: Context? = null) {
             "||analytics.google.com^",
             "||www.google-analytics.com^",
             "||ssl.google-analytics.com^",
+            "||appsflyer.com^",
+            "||trackingio.com^",
 
             // Huawei Ads
             "||ad.hicloud.com^",
@@ -290,7 +311,18 @@ class FilterDownloader(private val context: Context? = null) {
             // OPPO/vivo Ads
             "||adx.ads.oppomobile.com^",
             "||ad.oppomobile.com^",
-            "||adx.ads.vivo.com.cn^"
+            "||adx.ads.vivo.com.cn^",
+
+            // 12306
+            "||ad.12306.cn^",
+
+            // 携程/智行
+            "||adx.ctrip.com^",
+            "||ad.ctrip.com^",
+
+            // 超星/学习通
+            "||ad.chaoxing.com^",
+            "||adx.chaoxing.com^"
         )
     }
 }

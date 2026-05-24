@@ -107,6 +107,7 @@ class AdBlockVpnService : VpnService() {
                 if (vpn != null) {
                     Log.i(TAG, "Step 4: TunnelManager START")
                     tunnelManager = TunnelManager(vpn, ruleEngine, this@AdBlockVpnService)
+                    tunnelManager?.clearDnsCache()
                     tunnelManager?.start()
 
                     isRunning = true

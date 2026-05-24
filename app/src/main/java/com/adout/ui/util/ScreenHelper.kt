@@ -1,6 +1,7 @@
 package com.adout.ui.util
 
 import android.content.Context
+import android.os.Build
 import android.util.DisplayMetrics
 import android.view.WindowManager
 
@@ -40,15 +41,31 @@ object ScreenHelper {
      * 获取当前屏幕信息
      */
     fun getScreenInfo(context: Context): ScreenInfo {
-        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        windowManager.defaultDisplay.getRealMetrics(metrics)
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            ?: return ScreenInfo(1080, 2400, 420, 2.75f, DensityCategory.XXHDPI, 6.5f)
 
-        val widthPixels = metrics.widthPixels
-        val heightPixels = metrics.heightPixels
-        val densityDpi = metrics.densityDpi
-        val density = metrics.density
+        val widthPixels: Int
+        val heightPixels: Int
+        val densityDpi: Int
+        val density: Float
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val windowMetrics = windowManager.currentWindowMetrics
+            val bounds = windowMetrics.bounds
+            widthPixels = bounds.width()
+            heightPixels = bounds.height()
+            densityDpi = context.resources.configuration.densityDpi
+            density = context.resources.displayMetrics.density
+        } else {
+            @Suppress("DEPRECATION")
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            widthPixels = metrics.widthPixels
+            heightPixels = metrics.heightPixels
+            densityDpi = metrics.densityDpi
+            density = metrics.density
+        }
 
         val screenSizeInches = calculateScreenSize(widthPixels, heightPixels, densityDpi)
         val densityCategory = getDensityCategory(densityDpi)

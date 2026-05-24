@@ -24,7 +24,7 @@ object ForegroundServiceManager {
 
     fun checkBatteryOptimization(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
             val isIgnoringBatteryOptimizations = powerManager.isIgnoringBatteryOptimizations(
                 context.packageName
             )
@@ -37,7 +37,7 @@ object ForegroundServiceManager {
 
     fun isBatteryOptimizationDisabled(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
             return powerManager.isIgnoringBatteryOptimizations(context.packageName)
         }
         return true
@@ -45,11 +45,15 @@ object ForegroundServiceManager {
 
     fun requestIgnoreBatteryOptimization(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val intent = android.content.Intent(
-                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                android.net.Uri.parse("package:${context.packageName}")
-            )
-            context.startActivity(intent)
+            try {
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:${context.packageName}")
+                )
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                android.util.Log.w("ForegroundServiceManager", "Failed to request battery optimization", e)
+            }
         }
     }
 }
