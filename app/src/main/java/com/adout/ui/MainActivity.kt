@@ -44,11 +44,17 @@ import com.adout.vpn.AdBlockVpnService
 
 class MainActivity : ComponentActivity() {
 
+    private var viewModel: MainViewModel? = null
+
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK) {
-            startVpnService()
+            // Permission granted, start VPN
+            viewModel?.onVpnPermissionGranted()
+        } else {
+            // Permission denied
+            viewModel?.onVpnPermissionDenied()
         }
     }
 
@@ -56,24 +62,32 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             AdoutTheme {
-                MainScreen()
+                val vm: MainViewModel = viewModel()
+                viewModel = vm
+
+                // Observe permission request events
+                LaunchedEffect(Unit) {
+                    vm.requestVpnPermission.collect { needsPermission ->
+                        if (needsPermission) {
+                            requestVpnPermission()
+                        }
+                    }
+                }
+
+                MainScreen(vm)
             }
         }
     }
 
-    private fun checkVpnPermission(): Boolean {
+    private fun requestVpnPermission() {
         val intent = VpnService.prepare(this)
         if (intent != null) {
+            // Need to request permission
             vpnPermissionLauncher.launch(intent)
-            return false
+        } else {
+            // Permission already granted
+            viewModel?.onVpnPermissionGranted()
         }
-        return true
-    }
-
-    private fun startVpnService() {
-        val intent = Intent(this, AdBlockVpnService::class.java)
-        intent.action = "START"
-        startService(intent)
     }
 }
 
@@ -380,6 +394,24 @@ fun MainScreen(
                 color = TextTertiary,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
+        }
+
+        // Permission denied snackbar
+        if (uiState.showPermissionDeniedMessage) {
+            Snackbar(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .align(Alignment.BottomCenter),
+                action = {
+                    TextButton(onClick = { viewModel.dismissPermissionDeniedMessage() }) {
+                        Text("知道了", color = White)
+                    }
+                },
+                containerColor = Color(0xFFD32F2F),
+                contentColor = White
+            ) {
+                Text("需要 VPN 权限才能开启广告拦截")
+            }
         }
     }
 }
