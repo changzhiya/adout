@@ -412,7 +412,34 @@ fun MainScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "今日拦截",
+                                text = "DNS拦截",
+                                fontSize = (13 * densityScaleFactor).sp,
+                                color = TextSecondary
+                            )
+                        }
+
+                        // Divider
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(48.dp)
+                                .background(WhiteAlpha20)
+                        )
+
+                        // Ads Skipped Count (Accessibility)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = formatCount(uiState.adsSkippedCount),
+                                fontSize = (32 * densityScaleFactor).sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = White
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "广告跳过",
                                 fontSize = (13 * densityScaleFactor).sp,
                                 color = TextSecondary
                             )
