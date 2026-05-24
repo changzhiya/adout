@@ -179,7 +179,7 @@ fun MainScreen(
                 modifier = Modifier.padding(top = 32.dp)
             ) {
                 Text(
-                    text = "Adout",
+                    text = "AdOut",
                     fontSize = 36.sp,
                     fontWeight = FontWeight.Bold,
                     color = White,

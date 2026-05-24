@@ -3,7 +3,20 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Background gradient -->
     <path
-        android:fillColor="#667eea"
-        android:pathData="M0,0h108v108h-108z" />
+        android:fillColor="#4A00E0"
+        android:pathData="M0,0 L108,0 L108,108 L0,108 Z" />
+
+    <!-- Decorative circles -->
+    <path
+        android:fillColor="#5C16E5"
+        android:pathData="M-10,54 C-10,25 15,0 44,0 C73,0 98,25 98,54 C98,83 73,108 44,108 C15,108 -10,83 -10,54 Z"
+        android:fillAlpha="0.3" />
+
+    <path
+        android:fillColor="#6B2FF0"
+        android:pathData="M20,80 C20,60 40,45 60,45 C80,45 100,60 100,80 C100,100 80,115 60,115 C40,115 20,100 20,80 Z"
+        android:fillAlpha="0.2" />
 </vector>
