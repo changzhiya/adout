@@ -6,178 +6,159 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Adout - 一款纯本地运行的 Android 广告拦截应用，目标平台为 MagicOS（荣耀手机）。
+AdOut - 一款纯本地运行的 Android 广告拦截应用，目标平台为 MagicOS（荣耀手机），兼容其他 Android 设备。
 
-**核心功能**：拦截应用启动广告（全屏广告、开屏广告）
+**核心功能**：
+1. VPN DNS 拦截 - 过滤依赖系统 DNS 的广告请求
+2. 无障碍服务跳过 - 自动跳过开屏广告 Activity
 
 **目标用户**：家人朋友，需要简单易用，尽量少的配置步骤
 
-## Technical Direction
+## Build & Run
 
-### 架构：VPN + DNS 混合方案（复用 AdGuard 开源代码）
+```bash
+# 编译 Debug APK
+cd D:/codes/Adout && ./gradlew assembleDebug
 
-采用本地 VPN + DNS 过滤的混合方案，无需 Root 权限：
+# APK 输出路径
+app/build/outputs/apk/debug/app-debug.apk
+
+# Clean build
+./gradlew clean assembleDebug
+```
+
+## Architecture
+
+### 双层广告拦截
 
 ```
-App 请求 → VPN 拦截 → dnsproxy 处理 DNS → 查询规则 → 放行/拦截
+Layer 1: VPN DNS 拦截（网络层）
+  系统 DNS 请求 → VPN 10.0.0.2 → TunnelManager 异步处理
+  → RuleEngine 域名匹配 → 拦截(0.0.0.0) / 放行(转发上游DNS)
+
+Layer 2: 无障碍服务跳过（应用层）
+  App 启动 → 广告 Activity 显示 → AccessibilityService 检测
+  → 匹配广告模式 → 点击跳过按钮 / 按返回键
 ```
 
-**核心组件**：
-1. **VPN 服务**：使用 Android `VpnService` 拦截所有网络流量
-2. **DNS 代理**：复用 AdGuard dnsproxy（Go/gomobile），避免重写 DNS 协议
-3. **规则库**：集成 AdGuardFilters（MobileAdsFilter + ChineseFilter）
-4. **规则引擎**：查询内置/导入的规则库，判断是否拦截
-5. **UI 界面**：开关控制，状态显示
-6. **通知服务**：前台服务，保持存活
+### 核心组件
 
-### 代码复用策略
-
-**直接复用**：
-- **dnsproxy**: 使用 gomobile 编译为 .aar，处理 DNS 协议解析
-- **AdGuardFilters**: 下载 MobileAdsFilter 和 ChineseFilter 作为内置规则
-
-**参考实现**：
-- **tsurlfilter**: 参考规则格式设计，保持兼容性
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| VPN 服务 | `vpn/AdBlockVpnService.kt` | VpnService 子类，DNS-only 模式 |
+| 隧道管理 | `vpn/TunnelManager.kt` | 异步 DNS 拦截、转发、缓存 |
+| 规则引擎 | `rule/RuleEngine.kt` | Aho-Corasick 域名边界匹配 |
+| 规则解析 | `rule/RuleParser.kt` | Adblock Plus 格式解析 |
+| 广告跳过 | `accessibility/AdSkipAccessibilityService.kt` | 无障碍服务，检测并跳过开屏广告 |
+| 广告规则 | `accessibility/AdSkipRules.kt` | 广告 SDK 类名、按钮文字、资源 ID 模式 |
+| 规则下载 | `filter/FilterDownloader.kt` | AdGuardFilters 下载和缓存 |
+| 保活看门狗 | `worker/VpnWatchdogWorker.kt` | WorkManager 定时检查 VPN 状态 |
+| 开机自启 | `receiver/BootReceiver.kt` | 设备重启后自动恢复 VPN |
+| MagicOS | `util/MagicOSHelper.kt` | 荣耀设备检测和系统设置跳转 |
 
 ### 技术栈
 
 - **语言**: Kotlin
-- **最低 API**: Android 7.0 (API 24)
-- **目标 API**: Android 14+ (API 34)
-- **核心 API**: `VpnService`
-- **DNS 处理**: AdGuard dnsproxy (Go/gomobile)
-- **规则库**: AdGuardFilters
-- **规则格式**: Adblock Plus 兼容格式
-- **匹配算法**: Aho-Corasick 多模式匹配
+- **最低 API**: Android 8.0 (API 26)
+- **目标 API**: Android 14 (API 34)
+- **UI**: Jetpack Compose + Material3
+- **DNS**: 自实现 DNS 拦截（非 dnsproxy）
+- **规则**: Adblock Plus 兼容格式，Aho-Corasick 域名边界匹配
+- **保活**: WorkManager + BootReceiver + SharedPreferences 状态持久化
 
-### 规则格式
+### VPN 配置
 
-```bash
-# 黑名单规则（拦截）
-||ads.example.com^
-||tracking.sdk.com^
-
-# 白名单规则（放行）
-@@||important.example.com^
-
-# 通配符匹配
-||*.adserver.com^
+```kotlin
+// DNS-only 模式：只拦截 DNS 流量，非 DNS 流量不经过 VPN
+Builder()
+    .addAddress("10.0.0.2", 32)
+    .addDnsServer("10.0.0.2")  // 路由 DNS 到 VPN
+    // 没有 addRoute() - 非 DNS 流量直连
 ```
 
-### HTTPS 处理策略
+### 上游 DNS 服务器
 
-- **默认方案**：域名黑名单（不拦截 HTTPS 内容，按域名整体放行/拦截）
-- **高级方案**：系统证书 MITM（需要 Root 或 ADB 命令）
-- **实现策略**：默认域名黑名单，高级用户可选系统证书
+```kotlin
+// 优先使用国内 DNS，确保可靠性
+UPSTREAM_DNS = listOf("223.5.5.5", "119.29.29.29", "114.114.114.114")
+```
 
-## UI 设计
+## File Structure
 
-**设计风格**：极简但精致
+```
+app/src/main/java/com/adout/
+├── vpn/
+│   ├── AdBlockVpnService.kt      # VPN 服务
+│   └── TunnelManager.kt          # 异步 DNS 隧道
+├── rule/
+│   ├── RuleEngine.kt             # 域名边界匹配引擎
+│   ├── RuleParser.kt             # Adblock Plus 解析
+│   └── AhoCorasickMatcher.kt     # Aho-Corasick 自动机
+├── filter/
+│   └── FilterDownloader.kt       # 规则下载和缓存
+├── accessibility/
+│   ├── AdSkipAccessibilityService.kt  # 无障碍广告跳过
+│   └── AdSkipRules.kt                 # 广告检测规则
+├── receiver/
+│   └── BootReceiver.kt           # 开机自启
+├── worker/
+│   └── VpnWatchdogWorker.kt      # VPN 看门狗
+├── util/
+│   ├── MagicOSHelper.kt          # MagicOS 设备适配
+│   └── BatteryOptimizationHelper.kt
+├── ui/
+│   ├── MainActivity.kt           # 主界面
+│   ├── MainViewModel.kt          # 主界面逻辑
+│   ├── settings/SettingsScreen.kt     # 设置页面
+│   ├── setup/SetupGuideActivity.kt    # 首次引导
+│   └── theme/                    # Compose 主题
+├── service/
+│   ├── ForegroundServiceManager.kt
+│   └── NotificationHelper.kt
+├── data/
+│   └── RuleRepository.kt
+└── AdoutApplication.kt           # Application 初始化
 
-- 渐变背景（关闭时紫色系，开启时绿色系）
-- 毛玻璃效果按钮
-- 一键操作
+app/src/main/assets/rules/
+└── mobile_ads.txt                # 内置广告规则（500+ 条）
+```
 
-**主界面元素**：
-- 中间大圆按钮：点击开启/关闭 VPN 保护
-- 状态显示：保护已开启/关闭
-- 统计信息：今日拦截数、规则数量
-
-**交互逻辑**：
-- 点击中间大圆 → 开启/关闭 VPN 保护
-- 首次开启 → 弹出 VPN 权限请求
-- 开启成功 → 背景色渐变动画过渡
-
-## 后台运行策略
-
-### MagicOS 兼容
-
-- **前台服务 + 通知栏常驻**：显示一个持久通知，告诉系统"我在工作"
-- **引导用户关闭电池优化**：首次启动时引导用户手动设置
-
-### 自动恢复
-
-- VPN 服务意外断开 → 自动重连 + 通知提醒
-- 网络切换（WiFi ↔ 移动数据）→ 保持 VPN 连接
-
-## 规则管理
+## Ad Rules
 
 **规则来源**：
-- **内置规则**：针对国内主流 App 启动广告
-- **AdGuardFilters**：MobileAdsFilter（移动端广告）+ ChineseFilter（中文网站）
-- **本地导入**：支持手动导入规则文件
+- 内置规则：`assets/rules/mobile_ads.txt`（穿山甲、广点通、百度、快手、京东、12306、智行、学习通等）
+- 嵌入规则：`FilterDownloader.getEmbeddedRules()`（离线兜底）
 
-**规则更新**：
-- 从 GitHub 下载 AdGuardFilters 最新规则
-- 支持本地缓存，离线可用
-- 定期检查更新
+**匹配逻辑**：
+- Aho-Corasick 子串搜索 + 域名边界验证
+- `baidu.com` 匹配 `map.baidu.com` 但不匹配 `notbaidu.com`
+- 白名单优先级高于黑名单
 
-**匹配算法**：
-- Aho-Corasick 多模式匹配
-- 域名哈希表（精确匹配 O(1)）
-- 白名单优先检查
-- 内存缓存
+**DNS-only 的局限**：
+- 无法拦截使用 DoH（DNS-over-HTTPS）的广告 SDK
+- 无法拦截 IP 直连的广告请求
+- 无障碍服务跳过作为补充方案
 
-## Key Technical Challenges
+## Keep-Alive (MagicOS)
 
-- Android 14 对用户证书限制更严格
-- MagicOS 后台运行限制，需要引导用户关闭电池优化
-- 国内广告源需要专门的规则库（与国际不同）
-- VPN 方案本身会消耗额外电量（约 5-15%）
+5 层防御保活：
+1. Always-On VPN（系统级，已声明）
+2. BootReceiver（开机自启）
+3. WorkManager 看门狗（每 15 分钟检查）
+4. 自动重启（最多 3 次重试）
+5. 用户通知（失败时提醒）
 
-## Development Phases
+首次启动引导用户完成：电池优化豁免 → 受保护应用 → 自启动
 
-### Phase 1：项目初始化
-- 创建 Android 项目
-- 配置 build.gradle.kts
-- 设置 AndroidManifest.xml
+## Known Issues
 
-### Phase 2：集成 AdGuard dnsproxy
-- 编译 gomobile 库
-- 实现 DnsProxyWrapper 封装层
-- 测试 DNS 代理功能
+- `LocalBroadcastManager` 已废弃但仍可用，后续需迁移到其他方案
+- DNS-only 模式无法拦截 DoH/IP 直连广告，需无障碍服务补充
+- 部分广告 SDK 更新后可能需要更新 AdSkipRules 模式
 
-### Phase 3：集成 AdGuardFilters 规则库
-- 实现规则下载器
-- 解析 AdGuardFilters 格式
-- 缓存规则到本地
+## Key Design Decisions
 
-### Phase 4：规则引擎
-- Adblock Plus 格式规则解析
-- Aho-Corasick 匹配算法
-- 白名单支持
-- 规则热加载
-
-### Phase 5：VPN 服务
-- 实现 VpnService 子类
-- 集成 dnsproxy
-- 流量拦截与转发
-
-### Phase 6：UI 界面
-- 主界面设计实现
-- VPN 开关控制
-- 统计信息显示
-
-### Phase 7：优化完善
-- 前台服务 + 通知
-- 电池优化引导
-- 错误处理完善
-
-### Phase 8：高级功能（可选）
-- 系统证书安装引导
-- HTTPS MITM 支持
-- 规则在线订阅
-
-## Success Criteria
-
-- 成功拦截国内主流 App 启动广告
-- 无明显误杀，App 功能正常
-- 后台稳定运行，不被系统杀死
-- 用户操作简单，一键开启保护
-
-## Current Status
-
-项目处于设计阶段，相关文档已完成：
-- 设计文档：`docs/superpowers/specs/2026-05-24-adout-design.md`
-- 代码复用分析：`docs/superpowers/specs/2026-05-24-code-reuse-analysis.md`
-- 实现计划：`docs/superpowers/plans/2026-05-24-adout-implementation.md`
+1. **DNS-only 而非全流量代理**：避免 tun2socks 复杂性和部分 App 无法使用的问题
+2. **自实现 DNS 而非 dnsproxy**：减少依赖，异步处理提高性能
+3. **无障碍服务补充 DNS 拦截**：覆盖 DoH/IP 直连的广告 SDK
+4. **域名边界匹配而非子串匹配**：防止 `du.com` 误匹配 `baidu.com`
