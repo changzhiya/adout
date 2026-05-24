@@ -10,6 +10,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.adout.AdoutApplication
 import com.adout.rule.RuleEngine
 import com.adout.data.RuleRepository
@@ -34,7 +35,6 @@ class AdBlockVpnService : VpnService() {
     private val ruleRepository = RuleRepository(this)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var tunnelManager: TunnelManager? = null
-    private var dnsProxy: DnsProxyWrapper? = null
 
     private val ruleUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -45,15 +45,18 @@ class AdBlockVpnService : VpnService() {
     }
 
     override fun onCreate() {
+        Log.i(TAG, "=== onCreate START ===")
         super.onCreate()
         instance = this
+        Log.i(TAG, "=== onCreate END ===")
 
-        // Register rule update receiver
+        // Register rule update receiver (local broadcast only)
         val filter = IntentFilter("REFRESH_RULES")
-        registerReceiver(ruleUpdateReceiver, filter)
+        LocalBroadcastManager.getInstance(this).registerReceiver(ruleUpdateReceiver, filter)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "=== onStartCommand action=${intent?.action} ===")
         when (intent?.action) {
             "START" -> startVpn()
             "STOP" -> stopVpn()
@@ -63,45 +66,67 @@ class AdBlockVpnService : VpnService() {
     }
 
     private fun startVpn() {
-        if (isRunning) return
+        Log.i(TAG, "=== startVpn BEGIN isRunning=$isRunning ===")
+        if (isRunning) {
+            Log.i(TAG, "=== startVpn SKIPPED (already running) ===")
+            return
+        }
+
+        // Start foreground IMMEDIATELY to avoid ForegroundServiceStartNotAllowedException on Android 14+
+        try {
+            Log.i(TAG, "Step 1: startForeground...")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    1,
+                    createNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(1, createNotification())
+            }
+            Log.i(TAG, "Step 1: startForeground OK")
+        } catch (e: Exception) {
+            Log.e(TAG, "Step 1: startForeground FAILED", e)
+            return
+        }
 
         serviceScope.launch {
             try {
-                // Load rules (including AdGuardFilters)
+                Log.i(TAG, "Step 2: loadRules START")
                 loadRules()
+                Log.i(TAG, "Step 2: loadRules OK, ruleCount=${ruleEngine.getRuleCount()}")
 
-                // Start DNS proxy
-                startDnsProxy()
-
-                // Establish VPN connection
-                val vpn = establishVpn()
+                Log.i(TAG, "Step 3: establishVpn START (thread=${Thread.currentThread().name})")
+                val vpn = withContext(Dispatchers.Main) {
+                    Log.i(TAG, "Step 3: establishVpn on MAIN thread")
+                    establishVpn()
+                }
                 vpnInterface = vpn
+                Log.i(TAG, "Step 3: establishVpn OK vpn=$vpn")
 
                 if (vpn != null) {
-                    // Start traffic processing
-                    tunnelManager = TunnelManager(vpn, ruleEngine, dnsProxy)
+                    Log.i(TAG, "Step 4: TunnelManager START")
+                    tunnelManager = TunnelManager(vpn, ruleEngine, this@AdBlockVpnService)
                     tunnelManager?.start()
 
                     isRunning = true
+                    saveVpnState(true)
+                    Log.i(TAG, "Step 4: TunnelManager OK")
 
-                    // Start foreground service with proper type for Android 14+
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        startForeground(
-                            1,
-                            createNotification(),
-                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                        )
-                    } else {
-                        startForeground(1, createNotification())
-                    }
+                    Log.i(TAG, "Step 5: updateNotification")
+                    updateNotification()
 
-                    // Notify UI to update
+                    Log.i(TAG, "Step 6: sendBroadcast")
                     withContext(Dispatchers.Main) {
-                        sendBroadcast(Intent("VPN_STATUS_CHANGED"))
+                        LocalBroadcastManager.getInstance(this@AdBlockVpnService)
+                            .sendBroadcast(Intent("VPN_STATUS_CHANGED"))
                     }
+                    Log.i(TAG, "=== startVpn COMPLETE ===")
+                } else {
+                    Log.e(TAG, "Step 3: establishVpn returned NULL")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start VPN", e)
+                Log.e(TAG, "=== startVpn EXCEPTION at step ===", e)
                 stopVpn()
             }
         }
@@ -109,16 +134,7 @@ class AdBlockVpnService : VpnService() {
 
     private fun stopVpn() {
         serviceScope.launch {
-            tunnelManager?.stop()
-            tunnelManager = null
-
-            dnsProxy?.stop()
-            dnsProxy = null
-
-            vpnInterface?.close()
-            vpnInterface = null
-
-            isRunning = false
+            cleanupVpn()
 
             withContext(Dispatchers.Main) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -128,31 +144,47 @@ class AdBlockVpnService : VpnService() {
                     stopForeground(true)
                 }
                 stopSelf()
-                sendBroadcast(Intent("VPN_STATUS_CHANGED"))
+                LocalBroadcastManager.getInstance(this@AdBlockVpnService)
+                    .sendBroadcast(Intent("VPN_STATUS_CHANGED"))
             }
         }
     }
 
+    /**
+     * Synchronous cleanup - safe to call from onDestroy without coroutine
+     */
+    private fun cleanupVpn() {
+        tunnelManager?.stop()
+        tunnelManager = null
+
+        try {
+            vpnInterface?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to close vpnInterface", e)
+        }
+        vpnInterface = null
+
+        isRunning = false
+        saveVpnState(false)
+    }
+
     private suspend fun loadRules() {
-        // Load built-in rules + AdGuardFilters rules
+        // Only load local rules (built-in + assets) for fast startup
         val allRules = ruleRepository.getAllRules(
-            includeAdGuard = true,
+            includeAdGuard = false,
             customRules = emptyList()
         )
         ruleEngine.loadRules(allRules)
-    }
-
-    private fun startDnsProxy() {
-        dnsProxy = DnsProxyWrapper()
-        dnsProxy?.start("127.0.0.1:5353", listOf("8.8.8.8", "8.8.4.4"))
+        Log.i(TAG, "Loaded ${allRules.size} local rules")
     }
 
     private fun establishVpn(): ParcelFileDescriptor? {
+        // DNS-only mode: only route DNS traffic through VPN
+        // Non-DNS traffic (HTTP, etc.) bypasses VPN completely
         return Builder()
             .setSession("Adout")
             .addAddress("10.0.0.2", 32)
-            .addRoute("0.0.0.0", 0)
-            .addDnsServer("127.0.0.1") // Use local DNS proxy
+            .addDnsServer("10.0.0.2")  // Route DNS to our VPN address
             .setMtu(1500)
             .setBlocking(true)
             .establish()
@@ -180,14 +212,14 @@ class AdBlockVpnService : VpnService() {
 
     private fun updateNotification() {
         val notification = createNotification()
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager ?: return
         notificationManager.notify(1, notification)
     }
 
     override fun onDestroy() {
-        stopVpn()
-        unregisterReceiver(ruleUpdateReceiver)
+        cleanupVpn()
         serviceScope.cancel()
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(ruleUpdateReceiver)
         instance = null
         super.onDestroy()
     }
@@ -203,6 +235,11 @@ class AdBlockVpnService : VpnService() {
 
     fun getBlockedCount(): Long {
         return tunnelManager?.getBlockedCount() ?: 0
+    }
+
+    private fun saveVpnState(running: Boolean) {
+        val prefs = getSharedPreferences("adout_prefs", MODE_PRIVATE)
+        prefs.edit().putBoolean("vpn_was_running", running).apply()
     }
 
     /**
@@ -228,7 +265,8 @@ class AdBlockVpnService : VpnService() {
                 updateNotification()
 
                 withContext(Dispatchers.Main) {
-                    sendBroadcast(Intent("VPN_STATUS_CHANGED"))
+                    LocalBroadcastManager.getInstance(this@AdBlockVpnService)
+                        .sendBroadcast(Intent("VPN_STATUS_CHANGED"))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to refresh rules", e)
