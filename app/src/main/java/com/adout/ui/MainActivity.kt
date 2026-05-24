@@ -12,6 +12,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -216,7 +218,10 @@ fun MainScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.PowerSettingsNew,
-                            contentDescription = if (uiState.isVpnRunning) "关闭保护" else "开启保护",
+                            contentDescription = if (uiState.isVpnRunning)
+                                "广告拦截已开启，点击关闭保护"
+                            else
+                                "广告拦截已关闭，点击开启保护",
                             tint = White,
                             modifier = Modifier.size(56.dp)
                         )
@@ -231,7 +236,13 @@ fun MainScreen(
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium,
                     color = WhiteAlpha90,
-                    letterSpacing = 1.sp
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.semantics {
+                        contentDescription = if (uiState.isVpnRunning)
+                            "广告拦截保护状态：已开启"
+                        else
+                            "广告拦截保护状态：已关闭"
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))

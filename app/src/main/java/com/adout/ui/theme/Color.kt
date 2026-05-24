@@ -31,7 +31,7 @@ val GlassWhite = Color(0x33FFFFFF)
 val GlassWhiteLight = Color(0x1AFFFFFF)
 val GlassBorder = Color(0x4DFFFFFF)
 
-// Text colors
-val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xB3FFFFFF)
-val TextTertiary = Color(0x80FFFFFF)
+// Text colors - optimized for contrast on gradient backgrounds
+val TextPrimary = Color(0xFFFFFFFF)      // 100% white - main content
+val TextSecondary = Color(0xD9FFFFFF)    // 85% white - secondary info, contrast ≥ 4.5:1
+val TextTertiary = Color(0xB3FFFFFF)     // 70% white - hints/metadata, contrast ≥ 3:1
