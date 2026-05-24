@@ -63,12 +63,17 @@ object HapticHelper {
     /**
      * 检查系统是否启用了触觉反馈
      */
+    @Suppress("DEPRECATION")
     private fun isHapticEnabled(context: Context): Boolean {
-        return Settings.System.getInt(
-            context.contentResolver,
-            Settings.System.HAPTIC_FEEDBACK_ENABLED,
-            1
-        ) == 1
+        return try {
+            Settings.System.getInt(
+                context.contentResolver,
+                Settings.System.HAPTIC_FEEDBACK_ENABLED,
+                1
+            ) == 1
+        } catch (e: Settings.SettingNotFoundException) {
+            true // Default to enabled
+        }
     }
 
     /**

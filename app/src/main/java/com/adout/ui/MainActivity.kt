@@ -100,7 +100,6 @@ fun MainScreen(
     val context = LocalContext.current
 
     // Screen density and animation settings for high-res display adaptation
-    val isHighDensity = remember { ScreenHelper.isHighDensityScreen(context) }
     val densityScaleFactor = remember { ScreenHelper.getHighDensityScaleFactor(context) }
     val isReducedMotion = remember { AnimationHelper.isReducedMotionEnabled(context) }
 
