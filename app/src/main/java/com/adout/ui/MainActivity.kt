@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.adout.ui.settings.SettingsScreen
 import com.adout.ui.theme.*
 import com.adout.ui.util.AnimationHelper
 import com.adout.ui.util.HapticHelper
@@ -49,11 +51,16 @@ import com.adout.vpn.AdBlockVpnService
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
     private var viewModel: MainViewModel? = null
 
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        android.util.Log.i(TAG, "VPN permission result: resultCode=${result.resultCode}")
         if (result.resultCode == RESULT_OK) {
             // Permission granted, start VPN
             viewModel?.onVpnPermissionGranted()
@@ -76,6 +83,12 @@ class MainActivity : ComponentActivity() {
         // Request notification permission for Android 13+
         requestNotificationPermission()
 
+        // Check if setup guide should be shown
+        val prefs = getSharedPreferences("adout_prefs", MODE_PRIVATE)
+        if (!prefs.getBoolean("setup_completed", false)) {
+            startActivity(Intent(this, com.adout.ui.setup.SetupGuideActivity::class.java))
+        }
+
         setContent {
             AdoutTheme {
                 val vm: MainViewModel = viewModel()
@@ -90,7 +103,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                MainScreen(vm)
+                val showSettings by vm.showSettings.collectAsStateWithLifecycle()
+
+                if (showSettings) {
+                    SettingsScreen(onBack = { vm.closeSettings() })
+                } else {
+                    MainScreen(vm)
+                }
             }
         }
     }
@@ -108,12 +127,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestVpnPermission() {
+        android.util.Log.i(TAG, "requestVpnPermission called")
         val intent = VpnService.prepare(this)
+        android.util.Log.i(TAG, "VpnService.prepare result: $intent")
         if (intent != null) {
             // Need to request permission
+            android.util.Log.i(TAG, "Launching VPN permission dialog")
             vpnPermissionLauncher.launch(intent)
         } else {
             // Permission already granted
+            android.util.Log.i(TAG, "VPN permission already granted")
             viewModel?.onVpnPermissionGranted()
         }
     }
@@ -219,6 +242,17 @@ fun MainScreen(
                     color = TextSecondary,
                     letterSpacing = 1.sp
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                IconButton(onClick = { viewModel.openSettings() }) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "设置",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
 
             // Center section - Toggle Button
