@@ -212,6 +212,14 @@ class RuleRepository(private val context: Context? = null) {
     }
 
     /**
+     * Get rule count from all sources
+     */
+    suspend fun getTotalRuleCount(): Int {
+        val allRules = getAllRules()
+        return allRules.size
+    }
+
+    /**
      * Create default rules file content
      */
     fun createDefaultRulesFile(): String {
