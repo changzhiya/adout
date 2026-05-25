@@ -89,7 +89,8 @@ UPSTREAM_DNS = listOf("223.5.5.5", "119.29.29.29", "114.114.114.114")
 app/src/main/java/com/adout/
 ├── vpn/
 │   ├── AdBlockVpnService.kt      # VPN 服务
-│   └── TunnelManager.kt          # 异步 DNS 隧道
+│   ├── TunnelManager.kt          # 异步 DNS 隧道
+│   └── DnsProtocol.kt            # DNS 协议工具函数
 ├── rule/
 │   ├── RuleEngine.kt             # 域名边界匹配引擎
 │   ├── RuleParser.kt             # Adblock Plus 解析
@@ -121,6 +122,14 @@ app/src/main/java/com/adout/
 
 app/src/main/assets/rules/
 └── mobile_ads.txt                # 内置广告规则（500+ 条）
+
+app/src/test/java/com/adout/
+├── vpn/
+│   ├── TunnelManagerTest.kt      # DNS 协议单元测试
+│   └── DnsProtocolTest.kt        # DNS 协议单元测试
+└── rule/
+    ├── RuleEngineTest.kt
+    └── AhoCorasickMatcherTest.kt
 ```
 
 ## Ad Rules
@@ -155,14 +164,46 @@ app/src/main/assets/rules/
 - `LocalBroadcastManager` 已废弃但仍可用，后续需迁移到 StateFlow 或其他方案
 - DNS-only 模式无法拦截 DoH/IP 直连广告，需无障碍服务补充
 - 部分广告 SDK 更新后可能需要更新 AdSkipRules 模式
+- WebView/Overlay 渲染的开屏广告，"跳过"文字不在 AccessibilityNodeInfo 中，只能靠坐标手势兜底
+- `GestureDescription.GestureCallback` 是 Android 隐藏 API，无法检测手势是否被广告消费
 
 ## Recent Improvements
+
+### 严重及中问题修复 (2026-05-25)
+
+1. **`isConfidentAdActivity` 传参错误修复（严重）**：
+   - 函数原本检查 `packageName` 但使用 className 模式（"adsplashactivity" 等），永不命中
+   - 改为 `className: String` 参数，直接委托 `AdSkipRules.isAdClassName()`
+
+2. **DNS 拦截计数 UI 不刷新修复（中）**：
+   - `MainViewModel.updateVpnStatus()` 只在 VPN 启动时调用一次，`blockedCount` 永远为 0
+   - 新增轮询协程，VPN 运行时每 2 秒刷新拦截统计
+
+3. **通知栏拦截数不更新修复（中）**：
+   - `AdBlockVpnService` 新增 `startPeriodicNotificationUpdates()`，每 30 秒更新通知
+
+4. **多任务/Recents 误触修复**：
+   - 新增 `SYSTEM_PACKAGES` 过滤（systemui、launcher 等），系统界面不再触发扫描
+   - `isSkipText("关闭所有")` 因 startsWith("关闭") 误命中，依靠包过滤解决
+
+5. **WebView/Overlay 广告兜底策略**：
+   - 新增 `KNOWN_AD_APP_PACKAGES`（智行、百度网盘、美团等 12 个常见开屏广告应用）
+   - 新增 `SAFE_APP_PACKAGES`（QQ、微信），完全跳过避免误触
+   - 四阶段扫描：`200/700/1600/3000ms` 各一次独立扫描
+   - `swipeTopRightCorner()` 对角线滑动，覆盖 (92%,3%)→(80%,20%) 区域
+   - 已知广告应用 pass 3+ 强制 Back
+
+6. **跳过检测增强**：
+   - `clickByTextOrDescription()` 同时检查 `text` + `contentDescription`
+   - `clickByFullTreeScan()` 递归全树搜索任意匹配节点
+   - `clickNodeOrParent()` 统一处理可点击节点/父节点点击
 
 ### 无障碍服务增强 (2026-05-24)
 
 1. **广告检测逻辑优化**：
    - 增加 packageName 检查（`isAdSdkPackage`）
    - 扩展 className 模式匹配（openscreen、fullscreenad、interstitial、rewardvideo）
+   - 交互/摇一摇广告 Activity 模式（InteractiveAd、ShakeAd、SensorAd 等）
    - 使用 `isSkipText` 和 `isSkipResourceId` 辅助函数验证
 
 2. **跳过次数统计**：
@@ -173,6 +214,10 @@ app/src/main/assets/rules/
 3. **主界面 UI 改进**：
    - 底部统计卡片从 2 列改为 3 列
    - 新增"广告跳过"统计项，展示无障碍服务工作效果
+
+4. **手势注入**：
+   - `performSwipeUp()` / `performSwipeRight()` 使用 GestureDescription
+   - 备用方案处理摇一摇/交互式广告
 
 ## Key Design Decisions
 
