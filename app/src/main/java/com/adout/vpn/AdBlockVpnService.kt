@@ -23,9 +23,11 @@ class AdBlockVpnService : VpnService() {
     companion object {
         private const val TAG = "AdBlockVpnService"
 
+        @Volatile
         var isRunning = false
             private set
 
+        @Volatile
         var instance: AdBlockVpnService? = null
             private set
     }
@@ -35,6 +37,7 @@ class AdBlockVpnService : VpnService() {
     private val ruleRepository = RuleRepository(this)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var tunnelManager: TunnelManager? = null
+    private var notificationUpdateJob: Job? = null
 
     private val ruleUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -114,8 +117,9 @@ class AdBlockVpnService : VpnService() {
                     saveVpnState(true)
                     Log.i(TAG, "Step 4: TunnelManager OK")
 
-                    Log.i(TAG, "Step 5: updateNotification")
+                    Log.i(TAG, "Step 5: updateNotification + start periodic updates")
                     updateNotification()
+                    startPeriodicNotificationUpdates()
 
                     Log.i(TAG, "Step 6: sendBroadcast")
                     withContext(Dispatchers.Main) {
@@ -155,6 +159,8 @@ class AdBlockVpnService : VpnService() {
      * Synchronous cleanup - safe to call from onDestroy without coroutine
      */
     private fun cleanupVpn() {
+        notificationUpdateJob?.cancel()
+        notificationUpdateJob = null
         tunnelManager?.stop()
         tunnelManager = null
 
@@ -189,6 +195,19 @@ class AdBlockVpnService : VpnService() {
             .setMtu(1500)
             .setBlocking(true)
             .establish()
+    }
+
+    /**
+     * Update notification every 30s so blocked count stays fresh.
+     */
+    private fun startPeriodicNotificationUpdates() {
+        notificationUpdateJob?.cancel()
+        notificationUpdateJob = serviceScope.launch {
+            while (isActive) {
+                delay(30_000L)
+                updateNotification()
+            }
+        }
     }
 
     private fun createNotification(): Notification {

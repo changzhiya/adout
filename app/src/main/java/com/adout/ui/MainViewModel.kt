@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -51,6 +52,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             AdSkipAccessibilityService.adsSkippedCount.collect { count ->
                 _uiState.value = _uiState.value.copy(adsSkippedCount = count)
+            }
+        }
+
+        // Poll blocked count every 2s so UI stat stays fresh.
+        // VPN_STATUS_CHANGED fires only on start/stop, so blockedCount
+        // would otherwise appear stuck at 0 until user reopens the app.
+        viewModelScope.launch {
+            while (true) {
+                delay(2000)
+                val blocked = AdBlockVpnService.instance?.getBlockedCount() ?: 0
+                val running = AdBlockVpnService.isRunning
+                val rules = AdBlockVpnService.instance?.getRuleCount() ?: 0
+                _uiState.value = _uiState.value.copy(
+                    isVpnRunning = running,
+                    ruleCount = rules,
+                    blockedCount = blocked
+                )
             }
         }
     }
