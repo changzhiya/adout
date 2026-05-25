@@ -39,7 +39,7 @@ class TunnelManager(
 
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var blockedCount = 0L
+    private val blockedCount = java.util.concurrent.atomic.AtomicLong(0)
 
     // DNS response cache: domain -> (response, timestamp)
     private val dnsCache = LinkedHashMap<String, Pair<ByteArray, Long>>(100, 0.75f, true)
@@ -175,7 +175,7 @@ class TunnelManager(
             if (domain != null) {
                 // Check if domain should be blocked
                 if (ruleEngine.shouldBlock(domain)) {
-                    blockedCount++
+                    blockedCount.incrementAndGet()
                     Log.i(TAG, "BLOCKED: $domain")
 
                     val response = buildBlockedDnsResponse(dnsData)
@@ -265,146 +265,28 @@ class TunnelManager(
         return null
     }
 
-    /**
-     * Build a DNS response that returns 0.0.0.0 for blocked domain
-     */
-    private fun buildBlockedDnsResponse(dnsQuery: ByteArray): ByteArray? {
-        try {
-            val response = dnsQuery.copyOf()
-
-            // Set QR bit (response), AA bit (authoritative), RD bit
-            response[2] = (response[2].toInt() or 0x80 or 0x04 or 0x01).toByte()
-            // Set RA bit
-            response[3] = (response[3].toInt() or 0x80).toByte()
-
-            // Set answer count to 1
-            response[6] = 0x00
-            response[7] = 0x01
-
-            // Find end of query section
-            var offset = 12
-            while (offset < response.size && response[offset].toInt() != 0) {
-                val len = response[offset].toInt() and 0xFF
-                if (len and 0xC0 == 0xC0) {
-                    offset += 2
-                    break
-                }
-                offset += len + 1
-            }
-            if (offset < response.size && response[offset].toInt() == 0) {
-                offset++ // Skip null terminator
-            }
-            offset += 4 // Skip QTYPE and QCLASS
-
-            // Build answer section
-            val answer = ByteArray(16)
-
-            // Name pointer to query
-            answer[0] = 0xC0.toByte()
-            answer[1] = 0x0C.toByte()
-
-            // Type A (IPv4)
-            answer[2] = 0x00
-            answer[3] = 0x01
-
-            // Class IN
-            answer[4] = 0x00
-            answer[5] = 0x01
-
-            // TTL (60 seconds)
-            answer[6] = 0x00
-            answer[7] = 0x00
-            answer[8] = 0x00
-            answer[9] = 0x3C.toByte()
-
-            // Data length (4 bytes for IPv4)
-            answer[10] = 0x00
-            answer[11] = 0x04
-
-            // IP: 0.0.0.0
-            answer[12] = 0x00
-            answer[13] = 0x00
-            answer[14] = 0x00
-            answer[15] = 0x00
-
-            // Combine query + answer
-            val result = response.copyOf(offset + answer.size)
-            System.arraycopy(answer, 0, result, offset, answer.size)
-
-            return result
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to build blocked DNS response", e)
-            return null
-        }
-    }
 
     private fun extractDomain(dnsData: ByteArray): String? {
-        if (dnsData.size < 12) return null
-
-        try {
-            val domainParts = mutableListOf<String>()
-            var offset = 12
-
-            while (offset < dnsData.size) {
-                val length = dnsData[offset].toInt() and 0xFF
-                if (length == 0) break
-                if (length and 0xC0 == 0xC0) break
-
-                offset++
-                if (offset + length > dnsData.size) return null
-
-                val part = String(dnsData, offset, length)
-                domainParts.add(part)
-                offset += length
-            }
-
-            return if (domainParts.isEmpty()) null else domainParts.joinToString(".")
-        } catch (e: Exception) {
-            return null
-        }
+        return DnsProtocol.extractDomain(dnsData)
     }
 
-    /**
-     * Build DNS response packet from raw original packet bytes
-     */
+    private fun buildBlockedDnsResponse(dnsQuery: ByteArray): ByteArray? {
+        return DnsProtocol.buildBlockedDnsResponse(dnsQuery)
+    }
+
     private fun buildDnsResponsePacketFromRaw(
         originalPacket: ByteArray,
         dnsResponse: ByteArray,
         ipHeaderLength: Int
     ): ByteArray {
-        val ipHeader = ByteArray(ipHeaderLength)
-        System.arraycopy(originalPacket, 0, ipHeader, 0, ipHeaderLength)
-
-        // Modify total length
-        ipHeader[2] = ((ipHeaderLength + 8 + dnsResponse.size) shr 8).toByte()
-        ipHeader[3] = ((ipHeaderLength + 8 + dnsResponse.size) and 0xFF).toByte()
-
-        // Swap source and destination IP
-        val tempIp = ByteArray(4)
-        System.arraycopy(ipHeader, 12, tempIp, 0, 4)
-        System.arraycopy(ipHeader, 16, ipHeader, 12, 4)
-        System.arraycopy(tempIp, 0, ipHeader, 16, 4)
-
-        // Build UDP header
-        val udpHeader = ByteArray(8)
-        udpHeader[0] = 0x00.toByte()
-        udpHeader[1] = 0x35.toByte() // Source port 53
-        udpHeader[2] = originalPacket[ipHeaderLength].toByte()
-        udpHeader[3] = originalPacket[ipHeaderLength + 1].toByte()
-        udpHeader[4] = ((8 + dnsResponse.size) shr 8).toByte()
-        udpHeader[5] = ((8 + dnsResponse.size) and 0xFF).toByte()
-        udpHeader[6] = 0x00
-        udpHeader[7] = 0x00
-
-        val responsePacket = ByteArray(ipHeaderLength + 8 + dnsResponse.size)
-        System.arraycopy(ipHeader, 0, responsePacket, 0, ipHeaderLength)
-        System.arraycopy(udpHeader, 0, responsePacket, ipHeaderLength, 8)
-        System.arraycopy(dnsResponse, 0, responsePacket, ipHeaderLength + 8, dnsResponse.size)
-
-        return responsePacket
+        return DnsProtocol.buildDnsResponsePacketFromRaw(originalPacket, dnsResponse, ipHeaderLength)
     }
 
-    private fun getCachedDns(domain: String): ByteArray? {
+    private fun computeIpChecksum(header: ByteArray): Int {
+        return DnsProtocol.computeIpChecksum(header)
+    }
+
+    fun getCachedDns(domain: String): ByteArray? {
         synchronized(cacheLock) {
             val entry = dnsCache[domain] ?: return null
             if (System.currentTimeMillis() - entry.second > CACHE_TTL) {
@@ -415,19 +297,21 @@ class TunnelManager(
         }
     }
 
-    private fun cacheDns(domain: String, response: ByteArray) {
+    fun cacheDns(domain: String, response: ByteArray) {
         synchronized(cacheLock) {
-            if (dnsCache.size >= 200) {
+            while (dnsCache.size >= 200) {
                 val oldest = dnsCache.entries.iterator()
-                if (oldest.hasNext()) oldest.next()
-                oldest.remove()
+                if (oldest.hasNext()) {
+                    oldest.next()
+                    oldest.remove()
+                } else break
             }
             dnsCache[domain] = Pair(response, System.currentTimeMillis())
         }
     }
 
     fun getBlockedCount(): Long {
-        return blockedCount
+        return blockedCount.get()
     }
 
     /**

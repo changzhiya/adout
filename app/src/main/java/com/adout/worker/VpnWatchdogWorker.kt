@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.adout.AdoutApplication
 import com.adout.ui.MainActivity
 import com.adout.vpn.AdBlockVpnService
 
@@ -55,19 +56,37 @@ class VpnWatchdogWorker(
                 action = "START"
             }
             applicationContext.startService(intent)
-            prefs.edit()
-                .putInt("watchdog_failure_count", 0)
-                .putLong("last_vpn_restart", System.currentTimeMillis())
-                .apply()
-            Log.i(TAG, "VPN restart successful")
-            Result.success()
+
+            // Wait briefly for async VPN start, then verify
+            kotlinx.coroutines.delay(800)
+            if (AdBlockVpnService.isRunning) {
+                prefs.edit()
+                    .putInt("watchdog_failure_count", 0)
+                    .putLong("last_vpn_restart", System.currentTimeMillis())
+                    .apply()
+                Log.i(TAG, "VPN restart successful")
+                Result.success()
+            } else {
+                Log.w(TAG, "VPN startService returned but service not running")
+                val newCount = failureCount + 1
+                prefs.edit().putInt("watchdog_failure_count", newCount).apply()
+                if (newCount >= MAX_FAILURES) {
+                    showFailureNotification()
+                    Result.success()
+                } else {
+                    Result.retry()
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "VPN restart failed", e)
-            prefs.edit().putInt("watchdog_failure_count", failureCount + 1).apply()
-            if (failureCount + 1 >= MAX_FAILURES) {
+            val newCount = failureCount + 1
+            prefs.edit().putInt("watchdog_failure_count", newCount).apply()
+            if (newCount >= MAX_FAILURES) {
                 showFailureNotification()
+                Result.success()
+            } else {
+                Result.retry()
             }
-            Result.success()
         }
     }
 
@@ -77,7 +96,7 @@ class VpnWatchdogWorker(
             applicationContext, 0, intent, PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(applicationContext, "adout_vpn_service")
+        val notification = NotificationCompat.Builder(applicationContext, AdoutApplication.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("AdOut 需要您的帮助")
             .setContentText("自动恢复失败，请打开应用检查设置")

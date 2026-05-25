@@ -1,91 +1,33 @@
 package com.adout.filter
 
+import com.adout.rule.RuleParser
+
 /**
- * FilterParser - Parses AdGuardFilters rule format
+ * FilterParser - Parses AdGuardFilters rule format.
  *
- * Supports AdGuard rule syntax:
- * - Basic rules: ||domain^
- * - Whitelist rules: @@||domain^
- * - Comments: ! or # prefix
- * - Wildcards: *.domain.com
+ * Delegates rule parsing to [RuleParser] to avoid duplication.
+ * Provides additional categorization utility.
  */
 object FilterParser {
 
     /**
-     * Parse rule list, return structured rule objects
+     * Parse rule list, return structured rule objects.
+     * Delegates to [RuleParser.parse].
      */
     fun parseRules(rules: List<String>): List<ParsedRule> {
         return rules.mapNotNull { parseRule(it) }
     }
 
     /**
-     * Parse single rule
+     * Parse single rule via [RuleParser].
      */
     fun parseRule(ruleText: String): ParsedRule? {
-        val trimmed = ruleText.trim()
-
-        // Skip empty lines and comments
-        if (trimmed.isEmpty() || trimmed.startsWith("!") || trimmed.startsWith("#")) {
-            return null
+        val parsed = RuleParser.parse(ruleText) ?: return null
+        val type = when (parsed.type) {
+            RuleParser.RuleType.BLACKLIST -> RuleType.BLACKLIST
+            RuleParser.RuleType.WHITELIST -> RuleType.WHITELIST
         }
-
-        // Whitelist rules
-        if (trimmed.startsWith("@@")) {
-            val pattern = extractPattern(trimmed.substring(2))
-            if (pattern != null) {
-                return ParsedRule(
-                    type = RuleType.WHITELIST,
-                    pattern = pattern,
-                    originalText = trimmed
-                )
-            }
-        }
-
-        // Blacklist rules
-        val pattern = extractPattern(trimmed)
-        if (pattern != null) {
-            return ParsedRule(
-                type = RuleType.BLACKLIST,
-                pattern = pattern,
-                originalText = trimmed
-            )
-        }
-
-        return null
-    }
-
-    /**
-     * Extract domain pattern from rule text
-     */
-    private fun extractPattern(ruleText: String): String? {
-        val trimmed = ruleText.trim()
-
-        // Handle ||domain^ format
-        if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
-            return trimmed.substring(2, trimmed.length - 1)
-        }
-
-        // Handle ||domain format
-        if (trimmed.startsWith("||")) {
-            return trimmed.substring(2)
-        }
-
-        // Handle domain^ format
-        if (trimmed.endsWith("^") && !trimmed.contains("*")) {
-            return trimmed.substring(0, trimmed.length - 1)
-        }
-
-        // Handle wildcard format
-        if (trimmed.contains("*") && !trimmed.contains(" ") && !trimmed.contains("/")) {
-            return trimmed
-        }
-
-        // Handle simple domain format
-        if (trimmed.contains(".") && !trimmed.contains(" ") && !trimmed.contains("/")) {
-            return trimmed
-        }
-
-        return null
+        return ParsedRule(type, parsed.pattern, parsed.originalText)
     }
 
     /**
