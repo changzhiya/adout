@@ -4,6 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.Worker
+import androidx.work.WorkerParameters
 import com.adout.vpn.AdBlockVpnService
 
 class BootReceiver : BroadcastReceiver() {
@@ -21,18 +25,39 @@ class BootReceiver : BroadcastReceiver() {
         val wasRunning = prefs.getBoolean("vpn_was_running", false)
 
         if (wasRunning) {
-            Log.i(TAG, "VPN was running before reboot, restarting...")
-            try {
-                val serviceIntent = Intent(context, AdBlockVpnService::class.java).apply {
-                    action = "START"
-                }
-                context.startService(serviceIntent)
-                Log.i(TAG, "VPN restart intent sent")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to restart VPN after boot", e)
-            }
+            Log.i(TAG, "VPN was running before reboot, enqueueing restart...")
+            // Use WorkManager for reliable execution across Android 12+ restrictions
+            val workRequest = OneTimeWorkRequestBuilder<BootVpnWorker>()
+                .addTag("boot_vpn_restart")
+                .build()
+            WorkManager.getInstance(context).enqueue(workRequest)
         } else {
             Log.i(TAG, "VPN was not running before reboot, skipping")
+        }
+    }
+}
+
+class BootVpnWorker(
+    context: Context,
+    params: WorkerParameters
+) : Worker(context, params) {
+
+    companion object {
+        private const val TAG = "BootVpnWorker"
+    }
+
+    override fun doWork(): Result {
+        Log.i(TAG, "BootVpnWorker starting VPN...")
+        return try {
+            val intent = Intent(applicationContext, AdBlockVpnService::class.java).apply {
+                action = "START"
+            }
+            applicationContext.startService(intent)
+            Log.i(TAG, "BootVpnWorker VPN start intent sent")
+            Result.success()
+        } catch (e: Exception) {
+            Log.e(TAG, "BootVpnWorker failed to start VPN", e)
+            Result.retry()
         }
     }
 }

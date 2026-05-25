@@ -4,45 +4,108 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 
 object MagicOSHelper {
 
     private const val TAG = "MagicOSHelper"
 
+    fun isHuawei(): Boolean {
+        return Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true)
+    }
+
+    fun isHonor(): Boolean {
+        return Build.MANUFACTURER.equals("Honor", ignoreCase = true)
+    }
+
     fun isMagicOS(): Boolean {
-        return Build.MANUFACTURER.equals("Honor", ignoreCase = true) ||
-               Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true)
+        return isHuawei() || isHonor()
     }
 
     fun openProtectedApps(context: Context): Boolean {
-        return try {
+        // Try Huawei system manager (HMOS devices)
+        if (isHuawei()) {
+            try {
+                val intent = Intent().apply {
+                    component = ComponentName(
+                        "com.huawei.systemmanager",
+                        "com.huawei.systemmanager.optimize.process.ProtectActivity"
+                    )
+                }
+                context.startActivity(intent)
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "Huawei Protected Apps failed: ${e.message}")
+            }
+        }
+
+        // Try generic approach for Honor MagicOS 7+ or fallback
+        try {
             val intent = Intent().apply {
                 component = ComponentName(
-                    "com.huawei.systemmanager",
-                    "com.huawei.systemmanager.optimize.process.ProtectActivity"
+                    "com.android.settings",
+                    "com.android.settings.Settings\$HighPowerApplicationsActivity"
                 )
+            }
+            context.startActivity(intent)
+            return true
+        } catch (e: Exception) {
+            Log.w(TAG, "Generic Protected Apps failed: ${e.message}")
+        }
+
+        // Final fallback: open app details
+        return try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
             }
             context.startActivity(intent)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to open Protected Apps: ${e.message}")
+            Log.w(TAG, "Fallback app settings failed: ${e.message}")
             false
         }
     }
 
     fun openAutoStartManager(context: Context): Boolean {
+        // Try Huawei system manager (HMOS devices)
+        if (isHuawei()) {
+            try {
+                val intent = Intent().apply {
+                    component = ComponentName(
+                        "com.huawei.systemmanager",
+                        "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+                    )
+                }
+                context.startActivity(intent)
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "Huawei Auto-Start manager failed: ${e.message}")
+            }
+        }
+
+        // Honor MagicOS 7+ may use package manager settings
+        if (isHonor()) {
+            try {
+                val intent = Intent().apply {
+                    action = "android.settings.MANAGE_DEFAULT_APPS"
+                }
+                context.startActivity(intent)
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "Honor Auto-Start manager failed: ${e.message}")
+            }
+        }
+
+        // Final fallback: open app details
         return try {
-            val intent = Intent().apply {
-                component = ComponentName(
-                    "com.huawei.systemmanager",
-                    "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
-                )
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
             }
             context.startActivity(intent)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to open Auto-Start manager: ${e.message}")
+            Log.w(TAG, "Fallback app settings failed: ${e.message}")
             false
         }
     }
