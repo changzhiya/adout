@@ -64,10 +64,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val blocked = AdBlockVpnService.instance?.getBlockedCount() ?: 0
                 val running = AdBlockVpnService.isRunning
                 val rules = AdBlockVpnService.instance?.getRuleCount() ?: 0
+                val httpDnsBlocked = AdBlockVpnService.instance?.getHttpDnsBlockedCount() ?: 0
                 _uiState.value = _uiState.value.copy(
                     isVpnRunning = running,
                     ruleCount = rules,
-                    blockedCount = blocked
+                    blockedCount = blocked,
+                    httpDnsBlockedCount = httpDnsBlocked
                 )
             }
         }
@@ -196,5 +198,6 @@ data class MainUiState(
     val ruleCount: Int = 0,
     val blockedCount: Long = 0,
     val adsSkippedCount: Long = 0,
+    val httpDnsBlockedCount: Long = 0,
     val showPermissionDeniedMessage: Boolean = false
 )
