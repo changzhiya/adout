@@ -36,6 +36,29 @@ object DnsProtocol {
     }
 
     /**
+     * Build an empty DNS response (success but no records).
+     * Used for HttpDNS interception - forces fast failure.
+     */
+    fun buildEmptyDnsResponse(dnsQuery: ByteArray): ByteArray? {
+        try {
+            val response = dnsQuery.copyOf()
+
+            // Set QR bit (response), AA bit (authoritative), RD bit
+            response[2] = (response[2].toInt() or 0x80 or 0x04 or 0x01).toByte()
+            // Set RA bit
+            response[3] = (response[3].toInt() or 0x80).toByte()
+
+            // Answer count = 0 (already 0, but ensure)
+            response[6] = 0x00
+            response[7] = 0x00
+
+            return response
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
+    /**
      * Build a DNS response that returns 0.0.0.0 for blocked domain.
      */
     fun buildBlockedDnsResponse(dnsQuery: ByteArray): ByteArray? {
