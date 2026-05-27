@@ -1,5 +1,7 @@
 package com.adout.vpn
 
+import java.util.concurrent.ConcurrentHashMap
+
 object HttpDnsBlocklist {
     // 精确 IP 黑名单（已知 HttpDNS 服务商，不包含公共 DNS）
     private val EXACT_IPS = setOf(
@@ -16,6 +18,11 @@ object HttpDnsBlocklist {
         IpRange("180.76.76.0", 24),     // 百度广告
         IpRange("123.125.0.0", 16),     // 字节广告
     )
+
+    // 动态黑名单 - 运行时自动发现的 HttpDNS IP
+    private val dynamicIps = ConcurrentHashMap<String, Long>()
+    private const val MAX_DYNAMIC_IPS = 1000
+    private const val DYNAMIC_IP_TTL = 3600_000L  // 1 小时
 
     data class IpRange(val baseIp: String, val prefixLength: Int) {
         private val baseLong: Long = ipToLong(baseIp)!!
@@ -42,6 +49,40 @@ object HttpDnsBlocklist {
 
     fun shouldBlock(ip: String): Boolean {
         if (ip in EXACT_IPS) return true
-        return IP_RANGES.any { it.contains(ip) }
+        if (IP_RANGES.any { it.contains(ip) }) return true
+        return isDynamicBlocked(ip)
+    }
+
+    fun addDynamicIp(ip: String) {
+        addDynamicIp(ip, System.currentTimeMillis())
+    }
+
+    fun addDynamicIp(ip: String, timestamp: Long) {
+        if (dynamicIps.size >= MAX_DYNAMIC_IPS) {
+            clearExpired()
+            if (dynamicIps.size >= MAX_DYNAMIC_IPS) {
+                val oldest = dynamicIps.entries.minByOrNull { it.value }
+                oldest?.let { dynamicIps.remove(it.key) }
+            }
+        }
+        dynamicIps[ip] = timestamp
+    }
+
+    private fun isDynamicBlocked(ip: String): Boolean {
+        val timestamp = dynamicIps[ip] ?: return false
+        if (System.currentTimeMillis() - timestamp > DYNAMIC_IP_TTL) {
+            dynamicIps.remove(ip)
+            return false
+        }
+        return true
+    }
+
+    fun clearExpired() {
+        val now = System.currentTimeMillis()
+        dynamicIps.entries.removeIf { now - it.value > DYNAMIC_IP_TTL }
+    }
+
+    fun clearDynamicIps() {
+        dynamicIps.clear()
     }
 }

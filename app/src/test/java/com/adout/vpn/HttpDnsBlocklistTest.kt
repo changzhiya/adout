@@ -61,4 +61,28 @@ class HttpDnsBlocklistTest {
         assertFalse(HttpDnsBlocklist.shouldBlock("not-an-ip"))
         assertFalse(HttpDnsBlocklist.shouldBlock("1.2.3"))
     }
+
+    @Test
+    fun `dynamic IP can be added and blocked`() {
+        HttpDnsBlocklist.addDynamicIp("1.2.3.4")
+        assertTrue(HttpDnsBlocklist.shouldBlock("1.2.3.4"))
+        // Clean up
+        HttpDnsBlocklist.clearDynamicIps()
+    }
+
+    @Test
+    fun `dynamic IP expires after TTL`() {
+        HttpDnsBlocklist.addDynamicIp("5.6.7.8", System.currentTimeMillis() - 3700_000L)
+        HttpDnsBlocklist.clearExpired()
+        assertFalse(HttpDnsBlocklist.shouldBlock("5.6.7.8"))
+    }
+
+    @Test
+    fun `dynamic IP does not expire before TTL`() {
+        HttpDnsBlocklist.addDynamicIp("9.10.11.12")
+        HttpDnsBlocklist.clearExpired()
+        assertTrue(HttpDnsBlocklist.shouldBlock("9.10.11.12"))
+        // Clean up
+        HttpDnsBlocklist.clearDynamicIps()
+    }
 }
