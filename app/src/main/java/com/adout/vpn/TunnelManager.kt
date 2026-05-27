@@ -40,6 +40,8 @@ class TunnelManager(
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val blockedCount = java.util.concurrent.atomic.AtomicLong(0)
+    private val httpDnsInterceptor = HttpDnsInterceptor()
+    private val httpDnsBlockedCount = java.util.concurrent.atomic.AtomicLong(0)
 
     // DNS response cache: domain -> (response, timestamp)
     private val dnsCache = LinkedHashMap<String, Pair<ByteArray, Long>>(100, 0.75f, true)
@@ -94,6 +96,18 @@ class TunnelManager(
         job = null
     }
 
+    private fun extractDestIp(buffer: ByteBuffer): String {
+        val ip = ByteArray(4)
+        System.arraycopy(buffer.array(), 16, ip, 0, 4)
+        return "${ip[0].toInt() and 0xFF}.${ip[1].toInt() and 0xFF}.${ip[2].toInt() and 0xFF}.${ip[3].toInt() and 0xFF}"
+    }
+
+    private fun extractDestPort(buffer: ByteBuffer, ipHeaderLength: Int): Int {
+        if (buffer.limit() < ipHeaderLength + 4) return 0
+        return ((buffer.array()[ipHeaderLength + 2].toInt() and 0xFF) shl 8) or
+                (buffer.array()[ipHeaderLength + 3].toInt() and 0xFF)
+    }
+
     private fun processPacket(buffer: ByteBuffer, outputStream: FileOutputStream) {
         try {
             val length = buffer.limit()
@@ -105,7 +119,42 @@ class TunnelManager(
             val protocol = buffer.get(9).toInt() and 0xFF
 
             if (protocol == 17) {
-                processUdpPacket(buffer, outputStream)
+                val ipHeaderLength = (buffer.get(0).toInt() and 0x0F) * 4
+                val destIp = extractDestIp(buffer)
+                val destPort = extractDestPort(buffer, ipHeaderLength)
+
+                // HttpDNS check
+                when (httpDnsInterceptor.check(destIp, destPort, buffer)) {
+                    InterceptorResult.BLOCK -> {
+                        httpDnsBlockedCount.incrementAndGet()
+                        Log.i(TAG, "HttpDNS BLOCKED: $destIp:$destPort")
+                        val responsePacket = DnsProtocol.buildEmptyDnsResponse(
+                            buffer.array().copyOf(length)
+                        )
+                        if (responsePacket != null) {
+                            val fullResponse = DnsProtocol.buildDnsResponsePacketFromRaw(
+                                buffer.array(), responsePacket, ipHeaderLength
+                            )
+                            scope.launch {
+                                writeMutex.withLock {
+                                    outputStream.write(fullResponse)
+                                }
+                            }
+                        }
+                        return
+                    }
+                    InterceptorResult.ALLOW -> {
+                        scope.launch {
+                            writeMutex.withLock {
+                                outputStream.write(buffer.array(), 0, length)
+                            }
+                        }
+                        return
+                    }
+                    InterceptorResult.UNKNOWN -> {
+                        processUdpPacket(buffer, outputStream)
+                    }
+                }
             } else {
                 // Non-UDP traffic forward directly
                 scope.launch {
@@ -312,6 +361,10 @@ class TunnelManager(
 
     fun getBlockedCount(): Long {
         return blockedCount.get()
+    }
+
+    fun getHttpDnsBlockedCount(): Long {
+        return httpDnsBlockedCount.get()
     }
 
     /**
