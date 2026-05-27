@@ -36,6 +36,10 @@ Layer 1: VPN DNS 拦截（网络层）
   系统 DNS 请求 → VPN 10.0.0.2 → TunnelManager 异步处理
   → RuleEngine 域名匹配 → 拦截(0.0.0.0) / 放行(转发上游DNS)
 
+Layer 1.5: HttpDNS 拦截（网络层）
+  HttpDNS 请求 → VPN 捕获 → HttpDnsInterceptor 检查
+  → IP 黑名单匹配 / 行为分析 → 返回空响应(快速失败) / 放行
+
 Layer 2: 无障碍服务跳过（应用层）
   App 启动 → 广告 Activity 显示 → AccessibilityService 检测
   → 匹配广告模式 → 点击跳过按钮 / 按返回键
@@ -47,6 +51,9 @@ Layer 2: 无障碍服务跳过（应用层）
 |------|------|------|
 | VPN 服务 | `vpn/AdBlockVpnService.kt` | VpnService 子类，DNS-only 模式 |
 | 隧道管理 | `vpn/TunnelManager.kt` | 异步 DNS 拦截、转发、缓存 |
+| HttpDNS 拦截 | `vpn/HttpDnsInterceptor.kt` | HttpDNS IP 黑名单 + 行为分析 |
+| HttpDNS 黑名单 | `vpn/HttpDnsBlocklist.kt` | IP 精确匹配 + IP 段匹配 + 动态黑名单 |
+| HttpDNS 分析 | `vpn/HttpDnsPatternAnalyzer.kt` | 行为分析识别 HttpDNS |
 | 规则引擎 | `rule/RuleEngine.kt` | Aho-Corasick 域名边界匹配 |
 | 规则解析 | `rule/RuleParser.kt` | Adblock Plus 格式解析 |
 | 广告跳过 | `accessibility/AdSkipAccessibilityService.kt` | 无障碍服务，检测并跳过开屏广告 |
