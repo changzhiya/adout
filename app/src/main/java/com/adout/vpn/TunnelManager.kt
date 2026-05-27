@@ -128,12 +128,13 @@ class TunnelManager(
                     InterceptorResult.BLOCK -> {
                         httpDnsBlockedCount.incrementAndGet()
                         Log.i(TAG, "HttpDNS BLOCKED: $destIp:$destPort")
+                        val packetCopy = buffer.array().copyOf(length)
                         val responsePacket = DnsProtocol.buildEmptyDnsResponse(
-                            buffer.array().copyOf(length)
+                            packetCopy
                         )
                         if (responsePacket != null) {
                             val fullResponse = DnsProtocol.buildDnsResponsePacketFromRaw(
-                                buffer.array(), responsePacket, ipHeaderLength
+                                packetCopy, responsePacket, ipHeaderLength
                             )
                             scope.launch {
                                 writeMutex.withLock {
@@ -144,9 +145,10 @@ class TunnelManager(
                         return
                     }
                     InterceptorResult.ALLOW -> {
+                        val packetCopy = buffer.array().copyOf(length)
                         scope.launch {
                             writeMutex.withLock {
-                                outputStream.write(buffer.array(), 0, length)
+                                outputStream.write(packetCopy)
                             }
                         }
                         return
@@ -157,9 +159,10 @@ class TunnelManager(
                 }
             } else {
                 // Non-UDP traffic forward directly
+                val packetCopy = buffer.array().copyOf(length)
                 scope.launch {
                     writeMutex.withLock {
-                        outputStream.write(buffer.array(), 0, length)
+                        outputStream.write(packetCopy)
                     }
                 }
             }
@@ -199,9 +202,10 @@ class TunnelManager(
                 }
             } else {
                 // Non-DNS UDP traffic forward directly
+                val packetCopy = buffer.array().copyOf(length)
                 scope.launch {
                     writeMutex.withLock {
-                        outputStream.write(buffer.array(), 0, length)
+                        outputStream.write(packetCopy)
                     }
                 }
             }
