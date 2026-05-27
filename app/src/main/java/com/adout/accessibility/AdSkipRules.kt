@@ -69,6 +69,7 @@ object AdSkipRules {
      * When a button or view with this text is found, click it.
      */
     val SKIP_TEXT_PATTERNS = listOf(
+        // Basic skip patterns
         "跳过",
         "跳过广告",
         "跳过 ",
@@ -87,6 +88,15 @@ object AdSkipRules {
         "不再关注",
         "✕",
         "×",
+        "X",
+
+        // Countdown with skip (e.g., "跳过 3", "3s跳过", "跳过(3)")
+        "跳过 \\d".toRegex(),
+        "\\d+s?跳过".toRegex(),
+        "跳过\\(\\d+\\)".toRegex(),
+        "跳过 \\d+s".toRegex(),
+        "\\d+秒".toRegex(),
+        "\\d+s".toRegex(),
 
         // Shake/Interactive ad dismiss patterns
         "摇一摇跳过",
@@ -125,6 +135,14 @@ object AdSkipRules {
         "点击关闭广告",
         "关闭视频",
         "关闭详情",
+
+        // Icon/emoji close buttons
+        "✖",
+        "❌",
+        "❎",
+        "⨉",
+        "⊗",
+        "⊘",
     )
 
     /**
@@ -242,8 +260,12 @@ object AdSkipRules {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return false
         return SKIP_TEXT_PATTERNS.any { pattern ->
-            trimmed.equals(pattern, ignoreCase = true) ||
-            trimmed.startsWith(pattern, ignoreCase = true)
+            when (pattern) {
+                is Regex -> pattern.containsMatchIn(trimmed)
+                is String -> trimmed.equals(pattern, ignoreCase = true) ||
+                        trimmed.startsWith(pattern, ignoreCase = true)
+                else -> false
+            }
         }
     }
 

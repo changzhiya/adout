@@ -297,12 +297,10 @@ class AdSkipAccessibilityService : AccessibilityService() {
         if (clickByFullTreeScan(root)) return true
 
         // Strategy 4: Try corner clickable (skip btn almost always top-right)
-        val cornerNodes = findClickableNodesInCorner(root)
-        for (node in cornerNodes) {
-            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            Log.d(TAG, "Clicked corner node")
-            return true
-        }
+        if (clickCornerNodes(root)) return true
+
+        // Strategy 5: Try small clickable nodes (skip buttons are usually small)
+        if (clickSmallClickableNodes(root)) return true
 
         return false
     }
@@ -312,18 +310,139 @@ class AdSkipAccessibilityService : AccessibilityService() {
      * since ad SDKs often set only contentDescription (ImageView).
      */
     private fun clickByTextOrDescription(root: AccessibilityNodeInfo): Boolean {
-        for (pattern in AdSkipRules.SKIP_TEXT_PATTERNS) {
-            val nodes = root.findAccessibilityNodeInfosByText(pattern)
+        // Search for common skip keywords
+        val searchKeywords = listOf("跳过", "关闭", "skip", "Skip", "✕", "×", "X")
+        for (keyword in searchKeywords) {
+            val nodes = root.findAccessibilityNodeInfosByText(keyword)
             for (node in nodes) {
                 val nodeText = node.text?.toString() ?: ""
                 val nodeDesc = node.contentDescription?.toString() ?: ""
-                if (!AdSkipRules.isSkipText(nodeText) && !AdSkipRules.isSkipText(nodeDesc)) {
-                    continue
+                if (AdSkipRules.isSkipText(nodeText) || AdSkipRules.isSkipText(nodeDesc)) {
+                    if (clickNodeOrParent(node)) {
+                        Log.i(TAG, "Clicked by text/desc: ${nodeText.take(20)}")
+                        return true
+                    }
                 }
-                if (clickNodeOrParent(node)) return true
+            }
+        }
+
+        // Search for countdown text (e.g., "3s", "5秒")
+        val countdownNodes = findCountdownNodes(root)
+        for (node in countdownNodes) {
+            // Look for nearby skip button
+            val parent = node.parent
+            if (parent != null) {
+                for (i in 0 until parent.childCount) {
+                    val sibling = parent.getChild(i) ?: continue
+                    if (sibling == node) continue
+                    val siblingText = sibling.text?.toString() ?: ""
+                    val siblingDesc = sibling.contentDescription?.toString() ?: ""
+                    if (AdSkipRules.isSkipText(siblingText) || AdSkipRules.isSkipText(siblingDesc)) {
+                        if (clickNodeOrParent(sibling)) {
+                            Log.i(TAG, "Clicked skip near countdown: ${siblingText.take(20)}")
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Find nodes with countdown text (e.g., "3s", "5秒", "跳过 3").
+     */
+    private fun findCountdownNodes(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val results = mutableListOf<AccessibilityNodeInfo>()
+        findCountdownNodesRecursive(root, results, 0)
+        return results
+    }
+
+    private fun findCountdownNodesRecursive(
+        node: AccessibilityNodeInfo,
+        results: MutableList<AccessibilityNodeInfo>,
+        depth: Int
+    ) {
+        if (depth > 15) return
+
+        val text = node.text?.toString() ?: ""
+        if (text.isNotEmpty() && AdSkipRules.isCountdownText(text)) {
+            results.add(node)
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            findCountdownNodesRecursive(child, results, depth + 1)
+        }
+    }
+
+    /**
+     * Click small clickable nodes in corners (likely skip buttons).
+     */
+    private fun clickCornerNodes(root: AccessibilityNodeInfo): Boolean {
+        val cornerNodes = findClickableNodesInCorner(root)
+        for (node in cornerNodes) {
+            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                Log.d(TAG, "Clicked corner node")
+                return true
             }
         }
         return false
+    }
+
+    /**
+     * Click small clickable nodes anywhere on screen.
+     * Skip buttons are usually small (< 200x100 pixels).
+     */
+    private fun clickSmallClickableNodes(root: AccessibilityNodeInfo): Boolean {
+        val smallNodes = findSmallClickableNodes(root)
+        // Prioritize nodes in top half of screen (skip buttons usually there)
+        val topNodes = smallNodes.filter { node ->
+            val rect = android.graphics.Rect()
+            node.getBoundsInScreen(rect)
+            rect.centerY() < resources.displayMetrics.heightPixels * 0.4
+        }
+        for (node in topNodes) {
+            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                Log.d(TAG, "Clicked small clickable node")
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Find small clickable nodes that might be skip buttons.
+     */
+    private fun findSmallClickableNodes(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val results = mutableListOf<AccessibilityNodeInfo>()
+        findSmallClickableNodesRecursive(root, results, 0)
+        return results
+    }
+
+    private fun findSmallClickableNodesRecursive(
+        node: AccessibilityNodeInfo,
+        results: MutableList<AccessibilityNodeInfo>,
+        depth: Int
+    ) {
+        if (depth > 15) return
+
+        if (node.isClickable && node.isEnabled) {
+            val rect = android.graphics.Rect()
+            node.getBoundsInScreen(rect)
+            val width = rect.width()
+            val height = rect.height()
+            // Skip buttons are typically small: < 200px wide, < 100px tall
+            if (width in 1..200 && height in 1..100) {
+                results.add(node)
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            findSmallClickableNodesRecursive(child, results, depth + 1)
+        }
     }
 
     /**
