@@ -257,6 +257,10 @@ class AdBlockVpnService : VpnService() {
         return tunnelManager?.getBlockedCount() ?: 0
     }
 
+    fun getHttpDnsBlockedCount(): Long {
+        return tunnelManager?.getHttpDnsBlockedCount() ?: 0
+    }
+
     private fun saveVpnState(running: Boolean) {
         val prefs = getSharedPreferences("adout_prefs", MODE_PRIVATE)
         prefs.edit().putBoolean("vpn_was_running", running).apply()
