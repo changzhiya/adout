@@ -10,28 +10,33 @@ object HttpDnsBlocklist {
         "180.76.76.76",     // 百度 HttpDNS
     )
 
-    // IP 段黑名单（广告/CDN 网段）
+    // IP 段黑名单（广告/CDN 网段）- 使用 /24 更精确，减少误封风险
     private val IP_RANGES = listOf(
-        IpRange("101.226.0.0", 16),   // 360 广告
-        IpRange("180.76.0.0", 16),    // 百度广告
-        IpRange("123.125.0.0", 16),   // 字节广告
+        IpRange("101.226.125.0", 24),   // 360 广告
+        IpRange("180.76.76.0", 24),     // 百度广告
+        IpRange("123.125.0.0", 16),     // 字节广告
     )
 
     data class IpRange(val baseIp: String, val prefixLength: Int) {
-        private val baseLong: Long = ipToLong(baseIp)
+        private val baseLong: Long = ipToLong(baseIp)!!
         private val mask: Long = (-1L shl (32 - prefixLength))
 
         fun contains(ip: String): Boolean {
-            val ipLong = ipToLong(ip)
+            val ipLong = ipToLong(ip) ?: return false
             return (ipLong and mask) == (baseLong and mask)
         }
 
-        private fun ipToLong(ip: String): Long {
+        private fun ipToLong(ip: String): Long? {
             val parts = ip.split(".")
-            return (parts[0].toLong() shl 24) or
-                   (parts[1].toLong() shl 16) or
-                   (parts[2].toLong() shl 8) or
-                   parts[3].toLong()
+            if (parts.size != 4) return null
+            return try {
+                (parts[0].toLong() shl 24) or
+                (parts[1].toLong() shl 16) or
+                (parts[2].toLong() shl 8) or
+                parts[3].toLong()
+            } catch (e: NumberFormatException) {
+                null
+            }
         }
     }
 

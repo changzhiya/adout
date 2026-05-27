@@ -27,14 +27,38 @@ class HttpDnsBlocklistTest {
 
     @Test
     fun `IP range match returns true for ad network IP`() {
-        assertTrue(HttpDnsBlocklist.shouldBlock("101.226.1.1"))   // 360 广告
-        assertTrue(HttpDnsBlocklist.shouldBlock("180.76.1.1"))    // 百度广告
-        assertTrue(HttpDnsBlocklist.shouldBlock("123.125.1.1"))   // 字节广告
+        assertTrue(HttpDnsBlocklist.shouldBlock("101.226.125.50"))   // 360 广告 /24
+        assertTrue(HttpDnsBlocklist.shouldBlock("180.76.76.50"))     // 百度广告 /24
+        assertTrue(HttpDnsBlocklist.shouldBlock("123.125.1.1"))      // 字节广告 /16
     }
 
     @Test
     fun `IP range match returns false for non-ad IP`() {
-        assertFalse(HttpDnsBlocklist.shouldBlock("101.227.1.1"))  // 不在范围内
-        assertFalse(HttpDnsBlocklist.shouldBlock("180.77.1.1"))   // 不在范围内
+        assertFalse(HttpDnsBlocklist.shouldBlock("101.226.126.1"))  // 不在 /24 范围内
+        assertFalse(HttpDnsBlocklist.shouldBlock("180.76.77.1"))    // 不在 /24 范围内
+        assertFalse(HttpDnsBlocklist.shouldBlock("101.227.1.1"))    // 完全不在范围内
+        assertFalse(HttpDnsBlocklist.shouldBlock("180.77.1.1"))     // 完全不在范围内
+    }
+
+    @Test
+    fun `IP range boundary - first IP in range`() {
+        assertTrue(HttpDnsBlocklist.shouldBlock("101.226.125.0"))
+    }
+
+    @Test
+    fun `IP range boundary - last IP in range`() {
+        assertTrue(HttpDnsBlocklist.shouldBlock("101.226.125.255"))
+    }
+
+    @Test
+    fun `IP range boundary - just outside range`() {
+        assertFalse(HttpDnsBlocklist.shouldBlock("101.226.126.0"))
+    }
+
+    @Test
+    fun `invalid IP format returns false`() {
+        assertFalse(HttpDnsBlocklist.shouldBlock(""))
+        assertFalse(HttpDnsBlocklist.shouldBlock("not-an-ip"))
+        assertFalse(HttpDnsBlocklist.shouldBlock("1.2.3"))
     }
 }
