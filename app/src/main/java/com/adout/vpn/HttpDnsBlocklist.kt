@@ -10,7 +10,33 @@ object HttpDnsBlocklist {
         "180.76.76.76",     // 百度 HttpDNS
     )
 
+    // IP 段黑名单（广告/CDN 网段）
+    private val IP_RANGES = listOf(
+        IpRange("101.226.0.0", 16),   // 360 广告
+        IpRange("180.76.0.0", 16),    // 百度广告
+        IpRange("123.125.0.0", 16),   // 字节广告
+    )
+
+    data class IpRange(val baseIp: String, val prefixLength: Int) {
+        private val baseLong: Long = ipToLong(baseIp)
+        private val mask: Long = (-1L shl (32 - prefixLength))
+
+        fun contains(ip: String): Boolean {
+            val ipLong = ipToLong(ip)
+            return (ipLong and mask) == (baseLong and mask)
+        }
+
+        private fun ipToLong(ip: String): Long {
+            val parts = ip.split(".")
+            return (parts[0].toLong() shl 24) or
+                   (parts[1].toLong() shl 16) or
+                   (parts[2].toLong() shl 8) or
+                   parts[3].toLong()
+        }
+    }
+
     fun shouldBlock(ip: String): Boolean {
-        return ip in EXACT_IPS
+        if (ip in EXACT_IPS) return true
+        return IP_RANGES.any { it.contains(ip) }
     }
 }
