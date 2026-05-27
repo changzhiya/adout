@@ -159,6 +159,9 @@ class AdSkipAccessibilityService : AccessibilityService() {
         if (System.currentTimeMillis() - lastSkipTime < SKIP_COOLDOWN_MS) return
         if (monitoredAdPackage != packageName) return
 
+        // Check if this is an interactive/shake ad — avoid triggering it
+        val isInteractiveAd = isInteractiveAd(className)
+
         val rootNode = rootInActiveWindow
         if (rootNode != null) {
             val currentPkg = rootNode.packageName?.toString()
@@ -174,17 +177,40 @@ class AdSkipAccessibilityService : AccessibilityService() {
             rootNode.recycle()
         }
 
-        // Coordinate gesture — bypass WebView where text is invisible
-        swipeTopRightCorner()
+        // Only swipe if not an interactive ad (swipe would trigger it)
+        if (!isInteractiveAd) {
+            swipeTopRightCorner()
+        }
 
         // Back key: for confident ads, always try.
         // For known ad apps: try on later passes (overlay may intercept back)
+        // For interactive ads: always try back to dismiss
         val shouldBack = isConfidentAdActivity(className) ||
+                isInteractiveAd ||
                 (isKnownAdApp && passNumber >= 3)
         if (shouldBack) {
             performGlobalAction(GLOBAL_ACTION_BACK)
             markSkipped(packageName)
         }
+    }
+
+    /**
+     * Check if the activity is an interactive/shake ad.
+     * These ads trigger on swipe/shake gestures, so we should NOT perform gestures.
+     */
+    private fun isInteractiveAd(className: String): Boolean {
+        val lower = className.lowercase()
+        return lower.contains("interactivead") ||
+                lower.contains("interactionad") ||
+                lower.contains("motionad") ||
+                lower.contains("shakead") ||
+                lower.contains("sensorad") ||
+                lower.contains("gravityad") ||
+                lower.contains("gyroad") ||
+                lower.contains("dynamicad") ||
+                lower.contains("interactivesplash") ||
+                lower.contains("interactionsplash") ||
+                lower.contains("dynamicsplash")
     }
 
     private fun markSkipped(packageName: String) {
