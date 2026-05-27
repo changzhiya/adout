@@ -471,6 +471,33 @@ fun MainScreen(
                                 color = TextSecondary
                             )
                         }
+
+                        // Divider
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(48.dp)
+                                .background(WhiteAlpha20)
+                        )
+
+                        // HttpDNS Blocked Count
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = formatCount(uiState.httpDnsBlockedCount),
+                                fontSize = (32 * densityScaleFactor).sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = White
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "HttpDNS",
+                                fontSize = (13 * densityScaleFactor).sp,
+                                color = TextSecondary
+                            )
+                        }
                     }
                 }
             }
