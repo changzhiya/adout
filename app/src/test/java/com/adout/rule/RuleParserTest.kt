@@ -35,7 +35,7 @@ class RuleParserTest {
 
         assertNotNull(rule)
         assertEquals(RuleParser.RuleType.BLACKLIST, rule?.type)
-        assertEquals("*.adserver.com", rule?.pattern)
+        assertEquals(".adserver.com", rule?.pattern)
     }
 
     @Test

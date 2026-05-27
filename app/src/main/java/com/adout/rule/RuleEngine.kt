@@ -66,6 +66,12 @@ class RuleEngine {
             val matchEnd = result.position
             val matchStart = matchEnd - result.pattern.length + 1
 
+            // Patterns starting with '.' are domain boundary markers themselves
+            // (e.g., ".adserver.com" from wildcard rules), any AhoCorasick match is valid
+            if (result.pattern.startsWith(".")) {
+                return true
+            }
+
             if (matchStart == 0) {
                 // Pattern matches from the start of domain
                 // Check that the rest of the domain (if any) starts with '.'

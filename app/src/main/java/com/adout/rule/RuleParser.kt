@@ -58,9 +58,14 @@ object RuleParser {
     private fun extractPattern(ruleText: String): String? {
         val trimmed = ruleText.trim()
 
-        // Handle ||domain^ format
+        // Handle ||domain^ format (also handles ||*.domain^)
         if (trimmed.startsWith("||") && trimmed.endsWith("^")) {
-            return trimmed.substring(2, trimmed.length - 1)
+            val domain = trimmed.substring(2, trimmed.length - 1)
+            return if (domain.startsWith("*.")) {
+                domain.substring(1) // *.domain -> .domain (dot is a boundary marker)
+            } else {
+                domain
+            }
         }
 
         // Handle ||domain format
@@ -73,9 +78,9 @@ object RuleParser {
             return trimmed.substring(0, trimmed.length - 1)
         }
 
-        // Handle wildcard format
+        // Handle wildcard format (*.domain -> .domain)
         if (trimmed.contains("*") && !trimmed.contains(" ") && !trimmed.contains("/")) {
-            return trimmed
+            return trimmed.replace("*", "")
         }
 
         // Handle simple domain format
@@ -93,9 +98,10 @@ object RuleParser {
     fun normalizePattern(pattern: String): String {
         var normalized = pattern.lowercase().trim()
 
-        // Handle wildcard prefix
+        // Handle wildcard prefix - strip *. so ".adserver.com" matches both
+        // exact "adserver.com" and subdomains like "cdn.adserver.com" via AhoCorasick
         if (normalized.startsWith("*.")) {
-            normalized = normalized.substring(2)
+            normalized = normalized.substring(1) // keep the leading dot
         }
 
         return normalized
