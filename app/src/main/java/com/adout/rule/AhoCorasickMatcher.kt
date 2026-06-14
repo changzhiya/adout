@@ -16,6 +16,7 @@ class AhoCorasickMatcher {
 
     private val root = Node()
     private var isBuilt = false
+    private var patternCount = 0
 
     fun addPattern(pattern: String) {
         if (isBuilt) {
@@ -31,6 +32,7 @@ class AhoCorasickMatcher {
 
         current.isEnd = true
         current.patterns.add(pattern)
+        patternCount++
     }
 
     fun build() {
@@ -120,9 +122,13 @@ class AhoCorasickMatcher {
         root.failure = null
         root.patterns.clear()
         isBuilt = false
+        patternCount = 0
     }
 
+    /**
+     * Returns the total number of patterns added to this matcher.
+     */
     fun getPatternCount(): Int {
-        return root.children.size
+        return patternCount
     }
 }

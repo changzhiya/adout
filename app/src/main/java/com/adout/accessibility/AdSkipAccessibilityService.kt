@@ -260,7 +260,8 @@ class AdSkipAccessibilityService : AccessibilityService() {
     }
 
     private fun isLikelyAdActivity(packageName: String, className: String): Boolean {
-        if (AdSkipRules.isAdClassName(className)) return true
+        // Use isLikelyAdClassName for initial filtering (includes generic patterns)
+        if (AdSkipRules.isLikelyAdClassName(className)) return true
         if (AdSkipRules.isAdSdkPackage(packageName)) {
             Log.d(TAG, "Ad SDK package detected: $packageName")
             return true
@@ -296,11 +297,9 @@ class AdSkipAccessibilityService : AccessibilityService() {
         // Strategy 3: Aggressive full-tree scan for any skip-related content
         if (clickByFullTreeScan(root)) return true
 
-        // Strategy 4: Try corner clickable (skip btn almost always top-right)
-        if (clickCornerNodes(root)) return true
-
-        // Strategy 5: Try small clickable nodes (skip buttons are usually small)
-        if (clickSmallClickableNodes(root)) return true
+        // Note: Removed aggressive strategies (corner nodes, small clickable nodes)
+        // to avoid false positives on normal UI elements.
+        // Only use coordinate swipe as last resort for WebView ads.
 
         return false
     }
@@ -310,8 +309,8 @@ class AdSkipAccessibilityService : AccessibilityService() {
      * since ad SDKs often set only contentDescription (ImageView).
      */
     private fun clickByTextOrDescription(root: AccessibilityNodeInfo): Boolean {
-        // Search for common skip keywords
-        val searchKeywords = listOf("跳过", "关闭", "skip", "Skip", "✕", "×", "X")
+        // Search for specific skip keywords (must contain "跳过" or "广告")
+        val searchKeywords = listOf("跳过", "广告")
         for (keyword in searchKeywords) {
             val nodes = root.findAccessibilityNodeInfosByText(keyword)
             for (node in nodes) {
@@ -321,27 +320,6 @@ class AdSkipAccessibilityService : AccessibilityService() {
                     if (clickNodeOrParent(node)) {
                         Log.i(TAG, "Clicked by text/desc: ${nodeText.take(20)}")
                         return true
-                    }
-                }
-            }
-        }
-
-        // Search for countdown text (e.g., "3s", "5秒")
-        val countdownNodes = findCountdownNodes(root)
-        for (node in countdownNodes) {
-            // Look for nearby skip button
-            val parent = node.parent
-            if (parent != null) {
-                for (i in 0 until parent.childCount) {
-                    val sibling = parent.getChild(i) ?: continue
-                    if (sibling == node) continue
-                    val siblingText = sibling.text?.toString() ?: ""
-                    val siblingDesc = sibling.contentDescription?.toString() ?: ""
-                    if (AdSkipRules.isSkipText(siblingText) || AdSkipRules.isSkipText(siblingDesc)) {
-                        if (clickNodeOrParent(sibling)) {
-                            Log.i(TAG, "Clicked skip near countdown: ${siblingText.take(20)}")
-                            return true
-                        }
                     }
                 }
             }

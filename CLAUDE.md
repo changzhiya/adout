@@ -97,7 +97,10 @@ app/src/main/java/com/adout/
 ├── vpn/
 │   ├── AdBlockVpnService.kt      # VPN 服务
 │   ├── TunnelManager.kt          # 异步 DNS 隧道
-│   └── DnsProtocol.kt            # DNS 协议工具函数
+│   ├── DnsProtocol.kt            # DNS 协议工具函数
+│   ├── HttpDnsInterceptor.kt     # HttpDNS 主拦截逻辑
+│   ├── HttpDnsBlocklist.kt       # IP 精确/段/动态黑名单
+│   └── HttpDnsPatternAnalyzer.kt # 行为分析识别 HttpDNS
 ├── rule/
 │   ├── RuleEngine.kt             # 域名边界匹配引擎
 │   ├── RuleParser.kt             # Adblock Plus 解析
@@ -133,7 +136,11 @@ app/src/main/assets/rules/
 app/src/test/java/com/adout/
 ├── vpn/
 │   ├── TunnelManagerTest.kt      # DNS 协议单元测试
-│   └── DnsProtocolTest.kt        # DNS 协议单元测试
+│   ├── DnsProtocolTest.kt        # DNS 协议单元测试
+│   ├── HttpDnsBlocklistTest.kt   # IP 黑名单单元测试
+│   ├── HttpDnsPatternAnalyzerTest.kt  # 行为分析单元测试
+│   ├── HttpDnsInterceptorTest.kt     # 拦截器单元测试
+│   └── HttpDnsIntegrationTest.kt     # 集成测试
 └── rule/
     ├── RuleEngineTest.kt
     └── AhoCorasickMatcherTest.kt
@@ -173,6 +180,7 @@ app/src/test/java/com/adout/
 - 部分广告 SDK 更新后可能需要更新 AdSkipRules 模式
 - WebView/Overlay 渲染的开屏广告，"跳过"文字不在 AccessibilityNodeInfo 中，只能靠坐标手势兜底
 - `GestureDescription.GestureCallback` 是 Android 隐藏 API，无法检测手势是否被广告消费
+- 摇一摇广告需用 Back 键而非手势关闭（避免触发广告交互）
 
 ## Recent Improvements
 
@@ -204,6 +212,13 @@ app/src/test/java/com/adout/
    - `clickByTextOrDescription()` 同时检查 `text` + `contentDescription`
    - `clickByFullTreeScan()` 递归全树搜索任意匹配节点
    - `clickNodeOrParent()` 统一处理可点击节点/父节点点击
+
+7. **误触修复（2026-05-26）**：
+   - 检测策略从激进改为保守：移除 `clickSmallClickableNodes`、`clickCornerNodes`
+   - `clickByTextOrDescription()` 搜索关键词缩减为仅 `"跳过"` 和 `"广告"`
+   - `SKIP_TEXT_PATTERNS` 移除独立的"X"、"关闭"、emoji 按钮等宽泛模式
+   - 仅保留明确包含"跳过"或"广告"的文本模式 + 倒计时正则
+   - 摇一摇广告检测为 `isInteractiveAd()` 后用 Back 键关闭，避免手势触发广告
 
 ### 无障碍服务增强 (2026-05-24)
 

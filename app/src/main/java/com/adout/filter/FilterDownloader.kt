@@ -80,17 +80,17 @@ class FilterDownloader(private val context: Context? = null) {
      * @return File content
      */
     suspend fun downloadFromUrl(url: String): String? = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
         try {
-            val connection = URL(url).openConnection() as? HttpURLConnection ?: return@withContext null
+            connection = URL(url).openConnection() as? HttpURLConnection ?: return@withContext null
             connection.requestMethod = "GET"
             connection.connectTimeout = 10000
             connection.readTimeout = 10000
 
             if (connection.responseCode == 200) {
-                val reader = BufferedReader(InputStreamReader(connection.inputStream))
-                val content = reader.readText()
-                reader.close()
-                content
+                connection.inputStream.bufferedReader().use { reader ->
+                    reader.readText()
+                }
             } else {
                 Log.e(TAG, "HTTP ${connection.responseCode} from $url")
                 null
@@ -98,6 +98,8 @@ class FilterDownloader(private val context: Context? = null) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download from $url", e)
             null
+        } finally {
+            connection?.disconnect()
         }
     }
 

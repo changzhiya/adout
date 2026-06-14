@@ -39,6 +39,10 @@ class AdBlockVpnService : VpnService() {
     private var tunnelManager: TunnelManager? = null
     private var notificationUpdateJob: Job? = null
 
+    // Flag to prevent duplicate cleanup
+    @Volatile
+    private var isCleanedUp = false
+
     private val ruleUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "REFRESH_RULES") {
@@ -141,24 +145,38 @@ class AdBlockVpnService : VpnService() {
         serviceScope.launch {
             cleanupVpn()
 
-            withContext(Dispatchers.Main) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
+            // Use NonCancellable to ensure stopForeground/stopSelf complete
+            // even if serviceScope is cancelled during onDestroy
+            withContext(NonCancellable + Dispatchers.Main) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        stopForeground(true)
+                    }
+                    stopSelf()
+                    LocalBroadcastManager.getInstance(this@AdBlockVpnService)
+                        .sendBroadcast(Intent("VPN_STATUS_CHANGED"))
+                } catch (e: Exception) {
+                    Log.e(TAG, "stopVpn: error during stopForeground/stopSelf", e)
                 }
-                stopSelf()
-                LocalBroadcastManager.getInstance(this@AdBlockVpnService)
-                    .sendBroadcast(Intent("VPN_STATUS_CHANGED"))
             }
         }
     }
 
     /**
      * Synchronous cleanup - safe to call from onDestroy without coroutine
+     * Uses isCleanedUp flag to prevent duplicate cleanup
      */
     private fun cleanupVpn() {
+        if (isCleanedUp) {
+            Log.d(TAG, "cleanupVpn: already cleaned up, skipping")
+            return
+        }
+        isCleanedUp = true
+
+        Log.i(TAG, "cleanupVpn: starting cleanup")
         notificationUpdateJob?.cancel()
         notificationUpdateJob = null
         tunnelManager?.stop()
@@ -173,6 +191,7 @@ class AdBlockVpnService : VpnService() {
 
         isRunning = false
         saveVpnState(false)
+        Log.i(TAG, "cleanupVpn: cleanup complete")
     }
 
     private suspend fun loadRules() {

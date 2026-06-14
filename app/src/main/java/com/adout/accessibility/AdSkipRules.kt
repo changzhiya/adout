@@ -10,11 +10,11 @@ package com.adout.accessibility
 object AdSkipRules {
 
     /**
-     * Ad SDK class name patterns.
-     * These are the most reliable indicators of ad Activities.
-     * Checked against the root view's class name.
+     * Ad SDK package/class name patterns - HIGH CONFIDENCE.
+     * These are specific to known ad SDKs and rarely appear in normal apps.
+     * Used by isAdClassName() and isConfidentAdActivity().
      */
-    val AD_CLASS_PATTERNS = listOf(
+    val AD_SDK_PATTERNS = listOf(
         // 穿山甲/CSJ (ByteDance)
         "com.bytedance.sdk.openadsdk",
         "com.ss.android.download",
@@ -36,9 +36,16 @@ object AdSkipRules {
 
         // 京东广告
         "com.jd.ad",
+    )
 
-        // 通用广告 Activity 名称
-        "SplashActivity",
+    /**
+     * Generic ad Activity name patterns - LOWER CONFIDENCE.
+     * These are common ad Activity names but could appear in normal apps.
+     * Only used for initial filtering (isLikelyAdActivity), NOT for confident detection.
+     * Should be combined with other signals (package name, etc.) before taking action.
+     */
+    val GENERIC_AD_ACTIVITY_PATTERNS = listOf(
+        // 通用广告 Activity 名称 (注意: SplashActivity 太通用，已移除)
         "AdActivity",
         "AdSplashActivity",
         "SplashAdActivity",
@@ -65,45 +72,33 @@ object AdSkipRules {
     )
 
     /**
+     * Combined patterns for backward compatibility.
+     * @deprecated Use AD_SDK_PATTERNS or GENERIC_AD_ACTIVITY_PATTERNS instead.
+     */
+    @Deprecated("Use AD_SDK_PATTERNS for confident detection, GENERIC_AD_ACTIVITY_PATTERNS for initial filtering")
+    val AD_CLASS_PATTERNS = AD_SDK_PATTERNS + GENERIC_AD_ACTIVITY_PATTERNS
+
+    /**
      * Skip button text patterns.
      * When a button or view with this text is found, click it.
      */
     val SKIP_TEXT_PATTERNS = listOf(
-        // Basic skip patterns
+        // Basic skip patterns (must contain "跳过" or "广告")
         "跳过",
         "跳过广告",
         "跳过 ",
         "广告跳过",
         "点击跳过",
-        "关闭",
         "关闭广告",
+        "广告关闭",
         "skip",
         "Skip",
         "SKIP",
         "Skip Ad",
         "SkipAds",
-        "稍后",
-        "知道了",
-        "忽略",
-        "不再关注",
-        "✕",
-        "×",
-        "X",
 
-        // Countdown with skip (e.g., "跳过 3", "3s跳过", "跳过(3)")
-        "跳过 \\d".toRegex(),
-        "\\d+s?跳过".toRegex(),
-        "跳过\\(\\d+\\)".toRegex(),
-        "跳过 \\d+s".toRegex(),
-        "\\d+秒".toRegex(),
-        "\\d+s".toRegex(),
-
-        // Shake/Interactive ad dismiss patterns
+        // Explicit dismiss patterns
         "摇一摇跳过",
-        "点击跳过",
-        "点击跳转",
-        "点击查看",
-        "点击打开",
         "滑动跳过",
         "滑动关闭",
         "上滑跳过",
@@ -112,14 +107,8 @@ object AdSkipRules {
         "向上滑动跳过",
         "滑动以跳过",
         "摇动跳过",
-        "摇一摇",
-        "摇一摇进入",
-        "摇一摇查看",
-        "转动跳过",
-        "倾斜跳过",
-        "翻转跳过",
 
-        // Countdown skip variations
+        // Countdown skip variations (must have "跳过")
         "跳过 |",
         "跳过 | ",
         "| 跳过",
@@ -128,21 +117,16 @@ object AdSkipRules {
         "略过",
         "略過",
 
-        // Ad close variants
+        // Ad close variants (must have "广告" or "视频")
         "关闭广告",
-        "X 关闭",
-        "点击关闭",
         "点击关闭广告",
         "关闭视频",
-        "关闭详情",
 
-        // Icon/emoji close buttons
-        "✖",
-        "❌",
-        "❎",
-        "⨉",
-        "⊗",
-        "⊘",
+        // Countdown with skip (e.g., "跳过 3", "3s跳过", "跳过(3)")
+        "跳过 \\d".toRegex(),
+        "\\d+s?跳过".toRegex(),
+        "跳过\\(\\d+\\)".toRegex(),
+        "跳过 \\d+s".toRegex(),
     )
 
     /**
@@ -244,11 +228,24 @@ object AdSkipRules {
     )
 
     /**
-     * Check if a class name matches known ad patterns.
+     * Check if a class name matches known ad SDK patterns (HIGH CONFIDENCE).
+     * This should only match patterns that are specific to ad SDKs.
      */
     fun isAdClassName(className: String): Boolean {
         val lower = className.lowercase()
-        return AD_CLASS_PATTERNS.any { pattern ->
+        return AD_SDK_PATTERNS.any { pattern ->
+            lower.contains(pattern.lowercase())
+        }
+    }
+
+    /**
+     * Check if a class name matches any ad-related pattern (LOWER CONFIDENCE).
+     * Includes both SDK patterns and generic Activity names.
+     * Use for initial filtering, not for confident detection.
+     */
+    fun isLikelyAdClassName(className: String): Boolean {
+        val lower = className.lowercase()
+        return (AD_SDK_PATTERNS + GENERIC_AD_ACTIVITY_PATTERNS).any { pattern ->
             lower.contains(pattern.lowercase())
         }
     }
