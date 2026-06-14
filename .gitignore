@@ -16,4 +16,6 @@ local.properties
 /app/build
 .superpowers/
 .claude/
+CLAUDE.md
 docs/superpowers/
+docs/ui-preview.html
