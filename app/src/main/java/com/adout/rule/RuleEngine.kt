@@ -11,7 +11,7 @@ class RuleEngine {
     private val blacklistMatcher = AhoCorasickMatcher()
     private val whitelistMatcher = AhoCorasickMatcher()
 
-    @Volatile
+    // isDirty is always accessed under lock, so @Volatile is not needed
     private var isDirty = true
 
     // ReadWriteLock: multiple readers allowed, single writer exclusive
@@ -29,7 +29,11 @@ class RuleEngine {
         }
     }
 
-    fun loadRules(rules: List<String>) {
+    /**
+     * Add rules to the engine (append mode).
+     * For replacement semantics, use reloadRules() instead.
+     */
+    fun addRules(rules: List<String>) {
         lock.write {
             for (ruleText in rules) {
                 val rule = RuleParser.parse(ruleText) ?: continue
@@ -42,7 +46,11 @@ class RuleEngine {
         }
     }
 
-    fun loadRulesFromText(rulesText: String) {
+    /**
+     * Add rules from text (append mode).
+     * For replacement semantics, use reloadRulesFromText() instead.
+     */
+    fun addRulesFromText(rulesText: String) {
         lock.write {
             val rules = RuleParser.parseMultiple(rulesText)
             for (rule in rules) {
@@ -54,6 +62,18 @@ class RuleEngine {
             isDirty = true
         }
     }
+
+    /**
+     * @deprecated Use addRules() instead for clarity.
+     */
+    @Deprecated("Use addRules() for append, reloadRules() for replacement")
+    fun loadRules(rules: List<String>) = addRules(rules)
+
+    /**
+     * @deprecated Use addRulesFromText() instead for clarity.
+     */
+    @Deprecated("Use addRulesFromText() for append, reloadRulesFromText() for replacement")
+    fun loadRulesFromText(rulesText: String) = addRulesFromText(rulesText)
 
     fun shouldBlock(domain: String): Boolean {
         // Fast path: read lock for normal query

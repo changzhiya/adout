@@ -271,15 +271,9 @@ class AdSkipAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Known ad app window: $packageName")
             return true
         }
+        // Additional pattern: "splash" and "ad" co-occurrence (catches variants not in patterns)
         val lower = className.lowercase()
         if (lower.contains("splash") && lower.contains("ad")) return true
-        if (lower.contains("adsplash") || lower.contains("splashad")) return true
-        if (lower.contains("openscreen") || lower.contains("fullscreenad")) return true
-        if (lower.contains("interstitial") || lower.contains("rewardvideo")) return true
-        // Shake/interactive ad patterns
-        if (lower.contains("interactivead") || lower.contains("interactionad")) return true
-        if (lower.contains("motionad") || lower.contains("shakead")) return true
-        if (lower.contains("sensorad") || lower.contains("gravityad")) return true
         return false
     }
 
@@ -326,101 +320,6 @@ class AdSkipAccessibilityService : AccessibilityService() {
         }
 
         return false
-    }
-
-    /**
-     * Find nodes with countdown text (e.g., "3s", "5秒", "跳过 3").
-     */
-    private fun findCountdownNodes(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-        val results = mutableListOf<AccessibilityNodeInfo>()
-        findCountdownNodesRecursive(root, results, 0)
-        return results
-    }
-
-    private fun findCountdownNodesRecursive(
-        node: AccessibilityNodeInfo,
-        results: MutableList<AccessibilityNodeInfo>,
-        depth: Int
-    ) {
-        if (depth > 15) return
-
-        val text = node.text?.toString() ?: ""
-        if (text.isNotEmpty() && AdSkipRules.isCountdownText(text)) {
-            results.add(node)
-        }
-
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            findCountdownNodesRecursive(child, results, depth + 1)
-        }
-    }
-
-    /**
-     * Click small clickable nodes in corners (likely skip buttons).
-     */
-    private fun clickCornerNodes(root: AccessibilityNodeInfo): Boolean {
-        val cornerNodes = findClickableNodesInCorner(root)
-        for (node in cornerNodes) {
-            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                Log.d(TAG, "Clicked corner node")
-                return true
-            }
-        }
-        return false
-    }
-
-    /**
-     * Click small clickable nodes anywhere on screen.
-     * Skip buttons are usually small (< 200x100 pixels).
-     */
-    private fun clickSmallClickableNodes(root: AccessibilityNodeInfo): Boolean {
-        val smallNodes = findSmallClickableNodes(root)
-        // Prioritize nodes in top half of screen (skip buttons usually there)
-        val topNodes = smallNodes.filter { node ->
-            val rect = android.graphics.Rect()
-            node.getBoundsInScreen(rect)
-            rect.centerY() < resources.displayMetrics.heightPixels * 0.4
-        }
-        for (node in topNodes) {
-            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                Log.d(TAG, "Clicked small clickable node")
-                return true
-            }
-        }
-        return false
-    }
-
-    /**
-     * Find small clickable nodes that might be skip buttons.
-     */
-    private fun findSmallClickableNodes(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-        val results = mutableListOf<AccessibilityNodeInfo>()
-        findSmallClickableNodesRecursive(root, results, 0)
-        return results
-    }
-
-    private fun findSmallClickableNodesRecursive(
-        node: AccessibilityNodeInfo,
-        results: MutableList<AccessibilityNodeInfo>,
-        depth: Int
-    ) {
-        if (depth > 15) return
-
-        if (node.isClickable && node.isEnabled) {
-            val rect = android.graphics.Rect()
-            node.getBoundsInScreen(rect)
-            val width = rect.width()
-            val height = rect.height()
-            // Skip buttons are typically small: < 200px wide, < 100px tall
-            if (width in 1..200 && height in 1..100) {
-                results.add(node)
-            }
-        }
-
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            findSmallClickableNodesRecursive(child, results, depth + 1)
-        }
     }
 
     /**
@@ -487,60 +386,6 @@ class AdSkipAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Perform a swipe-up gesture to dismiss shake-to-open interactive ads.
-     * Many shake ads require a swipe to dismiss rather than a button click.
-     */
-    private fun performSwipeUp() {
-        try {
-            val displayMetrics = resources.displayMetrics
-            val width = displayMetrics.widthPixels
-            val height = displayMetrics.heightPixels
-
-            val startX = (width / 2).toFloat()
-            val startY = (height * 0.7f).toFloat()
-            val endY = (height * 0.2f).toFloat()
-
-            val path = Path()
-            path.moveTo(startX, startY)
-            path.lineTo(startX, endY)
-
-            val builder = GestureDescription.Builder()
-            builder.addStroke(GestureDescription.StrokeDescription(path, 0, 200))
-            dispatchGesture(builder.build(), null, null)
-            Log.i(TAG, "Swipe-up dispatched")
-        } catch (e: Exception) {
-            Log.w(TAG, "Swipe-up failed", e)
-        }
-    }
-
-    /**
-     * Perform a swipe-to-side gesture (rightward swipe).
-     * Some shake ads dismiss with a horizontal swipe.
-     */
-    private fun performSwipeRight() {
-        try {
-            val displayMetrics = resources.displayMetrics
-            val width = displayMetrics.widthPixels
-            val height = displayMetrics.heightPixels
-
-            val startX = (width * 0.1f).toFloat()
-            val endX = (width * 0.9f).toFloat()
-            val startY = (height / 2).toFloat()
-
-            val path = Path()
-            path.moveTo(startX, startY)
-            path.lineTo(endX, startY)
-
-            val builder = GestureDescription.Builder()
-            builder.addStroke(GestureDescription.StrokeDescription(path, 0, 200))
-            dispatchGesture(builder.build(), null, null)
-            Log.i(TAG, "Swipe-right dispatched")
-        } catch (e: Exception) {
-            Log.w(TAG, "Swipe-right failed", e)
-        }
-    }
-
-    /**
      * Swipe diagonally across top-right corner.
      * WebView-rendered ads hide "跳过" text from accessibility tree;
      * coordinate gesture bypasses this by hitting the general area.
@@ -599,58 +444,6 @@ class AdSkipAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             findNodesByResourceIdRecursive(child, patterns, results, depth + 1)
-        }
-    }
-
-    private fun hasCountdownText(root: AccessibilityNodeInfo): Boolean {
-        return hasCountdownTextRecursive(root, 0)
-    }
-
-    private fun hasCountdownTextRecursive(node: AccessibilityNodeInfo, depth: Int): Boolean {
-        if (depth > 15) return false
-
-        val text = node.text?.toString() ?: ""
-        if (text.isNotEmpty() && AdSkipRules.isCountdownText(text)) {
-            return true
-        }
-
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            if (hasCountdownTextRecursive(child, depth + 1)) return true
-        }
-        return false
-    }
-
-    private fun findClickableNodesInCorner(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-        val results = mutableListOf<AccessibilityNodeInfo>()
-        findClickableInCornerRecursive(root, results, 0)
-        return results
-    }
-
-    private fun findClickableInCornerRecursive(
-        node: AccessibilityNodeInfo,
-        results: MutableList<AccessibilityNodeInfo>,
-        depth: Int
-    ) {
-        if (depth > 10) return
-
-        if (node.isClickable && node.isEnabled) {
-            val rect = android.graphics.Rect()
-            node.getBoundsInScreen(rect)
-            val screenWidth = resources.displayMetrics.widthPixels
-            val screenHeight = resources.displayMetrics.heightPixels
-            if (rect.centerX() > screenWidth * 0.7 && rect.centerY() < screenHeight * 0.3) {
-                val width = rect.width()
-                val height = rect.height()
-                if (width < 300 && height < 200) {
-                    results.add(node)
-                }
-            }
-        }
-
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            findClickableInCornerRecursive(child, results, depth + 1)
         }
     }
 

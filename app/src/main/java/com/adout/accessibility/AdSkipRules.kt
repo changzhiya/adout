@@ -75,7 +75,10 @@ object AdSkipRules {
      * Combined patterns for backward compatibility.
      * @deprecated Use AD_SDK_PATTERNS or GENERIC_AD_ACTIVITY_PATTERNS instead.
      */
-    @Deprecated("Use AD_SDK_PATTERNS for confident detection, GENERIC_AD_ACTIVITY_PATTERNS for initial filtering")
+    @Deprecated(
+        "Use AD_SDK_PATTERNS for confident detection, GENERIC_AD_ACTIVITY_PATTERNS for initial filtering",
+        ReplaceWith("AD_SDK_PATTERNS + GENERIC_AD_ACTIVITY_PATTERNS")
+    )
     val AD_CLASS_PATTERNS = AD_SDK_PATTERNS + GENERIC_AD_ACTIVITY_PATTERNS
 
     /**

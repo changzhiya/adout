@@ -79,6 +79,9 @@ class AdBlockVpnService : VpnService() {
             return
         }
 
+        // Reset cleanup flag for new VPN session
+        isCleanedUp = false
+
         // Start foreground IMMEDIATELY to avoid ForegroundServiceStartNotAllowedException on Android 14+
         try {
             Log.i(TAG, "Step 1: startForeground...")
