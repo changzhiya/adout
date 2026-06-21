@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/logo.png" alt="AdOut Logo" width="120" height="120">
-</p>
-
 <h1 align="center">AdOut</h1>
 
 <p align="center">
@@ -245,7 +241,7 @@ Builder()
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+本项目采用 MIT 许可证
 
 ## 🙏 致谢
 
